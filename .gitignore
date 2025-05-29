@@ -23,6 +23,9 @@
 # Arquivos de dados e documentos
 # =========================
 
+# Ignora arquivos de dados em formato txt
+**/*.txt
+
 # Ignora planilhas Excel
 **/*.xlsx
 
