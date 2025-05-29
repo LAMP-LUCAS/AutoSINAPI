@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timedelta
 import os
 from rastreador_xlsx import scan_excel_directory, format_output
+from pathlib import Path
 
 LOG_FILE = "sinap_webscraping_download_log.json"
 TEMPO_ESPERA_MINUTOS = 10  # tempo mínimo entre downloads do mesmo arquivo
@@ -120,6 +121,48 @@ def unzip_sinapi_file(ano, mes,formato='xlsx'):
     with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
         zip_ref.extractall(extraction_path)
         print(f'Unzipped files to: {extraction_path}')
+    
+    return extraction_path
+
+def xlsx_file_name_normalization(path,format='xlsx'):
+    import unicodedata
+    """Normalizes the file name by removing accents and converting to uppercase.
+    Args:
+        name (str): The file name to be normalized.
+    Returns:
+        str: The normalized file name.
+    """
+    format = format.strip().lower()
+    if "*." in format:
+        format = format.split("*.")[1]
+    if not format:
+        raise ValueError("Formato não pode ser vazio.")
+    names = [arquivo.name for arquivo in path.glob(f'*.{format}')]
+    normalized_names = []
+    for name in names:
+        normalized_name = name_normalization(name)
+        normalized_names.append(normalized_name)
+        
+    
+    #renomeando arquivos
+    for i, name in enumerate(normalized_names):
+        old_file_path = path / names[i]
+        new_file_path = path / name.upper()
+        os.rename(old_file_path, new_file_path)
+        if old_file_path != new_file_path:
+            os.rename(old_file_path, new_file_path)
+            print(f'Renamed {old_file_path} to {new_file_path}')
+    return normalized_names
+
+def name_normalization(name):
+    """Normalizes the name by removing accents and converting to uppercase.
+    Args:
+        path (str): The path to the directory containing the files.
+        names (list): List of file names to be normalized.
+        """
+    import unicodedata
+    normalized_name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('utf-8')
+    return normalized_name.upper().replace(' ', '_').replace('-', '_').strip()
 
 def main():
     planilhas = ['familias_e_coeficientes', 'Manutenções', 'mao_de_obra', 'Referência']
@@ -135,7 +178,12 @@ def main():
         return
          
     download_sinapi_zip(ano, mes)
-    unzip_sinapi_file(ano, mes)
+    extraction_path = unzip_sinapi_file(ano, mes)
+
+    names = [arquivo.name for arquivo in extraction_path.glob('*.xlsx')]
+    
+    xlsx_file_name_normalization(extraction_path,'xlsx')
+
     # Rastreia os arquivos Excel no diretório
     resultado = scan_excel_directory(file_path)
     formatted_output = format_output(resultado)

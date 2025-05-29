@@ -357,7 +357,7 @@ def insert_data_with_validation(engine, schema_name, table_name, dataframe, batc
     if logger:
         logger.info(f"Tempo total de execução da inserção: {total_time_delta}")
 
-def load_excel_sinapi(filepath, tipo_base, logger=None):
+def load_total_excel_sinapi(filepath, tipo_base, logger=None):
     """
     Carrega arquivo Excel do SINAPI conforme o tipo de base.
 
@@ -380,6 +380,147 @@ def load_excel_sinapi(filepath, tipo_base, logger=None):
     if logger:
         logger.info(f"Arquivo {filepath} carregado para tipo {tipo_base}.")
     return df
+
+def clean_data(df_insert):
+    # Limpeza genérica de dados: strings para uppercase, remoção de espaços e NaN para None
+    df = df_insert.copy()
+    df = df.applymap(lambda x: x.strip().upper() if isinstance(x, str) else x)
+    df = df.where(pd.notnull(df), None)
+    return df
+
+def read_and_clean_excel(filepath, sheet_name, header=None):
+    # Leitura da planilha Excel
+    df = pd.read_excel(filepath, sheet_name=sheet_name, header=header)
+    # Limpeza dos dados
+    df = clean_data(df)
+    return df
+
+def load_especific_excel_sinapi(filepath, tipo_base, logger=None):
+    """
+    Carrega planilhas específicas do arquivo Excel do SINAPI conforme o tipo de base.
+
+    Args:
+        filepath (str): Caminho do arquivo Excel.
+        tipo_base (str): Tipo da base ('coeficientes', 'manutencoes', 'analitico').
+        logger (logging.Logger, opcional): Logger para mensagens.
+
+    Returns:
+        pd.DataFrame: DataFrame carregado ou None se o tipo_base for inválido.
+    """
+    if tipo_base == 'coeficientes':
+        try:
+            df = read_and_clean_excel(filepath, sheet_name='Coeficientes', header=5)
+
+            if logger:
+                logger.info(f"Planilha 'Coeficientes' carregada do arquivo {filepath}.")
+            return df
+        except Exception as e:
+            if logger:
+                logger.error(f"Erro ao carregar planilha 'Coeficientes' de {filepath}: {e}")
+            return None
+    elif tipo_base == 'manutencoes':
+        try:
+            df = read_and_clean_excel(filepath, sheet_name='Manutenções', header=5)
+            if logger:
+                logger.info(f"Planilha 'Manutenções' carregada do arquivo {filepath}.")
+            return df
+        except Exception as e:
+            if logger:
+                logger.error(f"Erro ao carregar planilha 'Manutenções' de {filepath}: {e}")
+            return None
+    elif tipo_base == 'analitico':
+        try:
+            df = read_and_clean_excel(filepath, sheet_name='Analítico', header=9)
+            if logger:
+                logger.info(f"Planilha 'Analítico' carregada do arquivo {filepath}.")
+            return df
+        except Exception as e:
+            if logger:
+                logger.error(f"Erro ao carregar planilha 'Analítico' de {filepath}: {e}")
+            return None
+    else:
+        if logger:
+            logger.warning(f"Tipo de base inválido: {tipo_base}. Use 'coeficientes', 'manutencoes' ou 'analitico'.")
+        return None
+
+def treat_coeficientes(df_insert, logger=None):
+    """
+    Trata os dados da planilha 'Coeficientes'.
+
+    Args:
+        df (pd.DataFrame): DataFrame da planilha 'Coeficientes'.
+        logger (logging.Logger, opcional): Logger para mensagens.
+
+    Returns:
+        pd.DataFrame: DataFrame tratado.
+    """
+    df = df_insert.copy()
+    # Implementar tratamento específico para 'Coeficientes'
+    df = df.drop_duplicates()
+    df.columns = [clean_string(col) for col in df.columns]
+    df = clean_data(df)
+    # uma lista com o nome das primeiras 5 colunas
+    df_idvars = df.  # Mantém apenas as primeiras 5 colunas fixas
+
+    # função que pivota as colunas de estados para linhas
+    df = pd.melt(df, id_vars=['mes/ref', 'cod familia', 'cod_insumo', 'descricao', 'unidade'],
+                    var_name='estado', value_name='coeficiente')
+    
+    if logger:
+        logger.info("Dados da planilha 'Coeficientes' tratados.")
+    return df
+
+def treat_manutencoes(df, logger=None):
+    """
+    Trata os dados da planilha 'Manutenções'.
+
+    Args:
+        df (pd.DataFrame): DataFrame da planilha 'Manutenções'.
+        logger (logging.Logger, opcional): Logger para mensagens.
+
+    Returns:
+        pd.DataFrame: DataFrame tratado.
+    """
+    # Implementar tratamento específico para 'Manutenções'
+    df = df.drop_duplicates()
+    if logger:
+        logger.info("Dados da planilha 'Manutenções' tratados.")
+    return df
+
+def treat_analitico(df, logger=None):
+    """
+    Trata os dados da planilha 'Analítico'.
+
+    Args:
+        df (pd.DataFrame): DataFrame da planilha 'Analítico'.
+        logger (logging.Logger, opcional): Logger para mensagens.
+
+    Returns:
+        pd.DataFrame: DataFrame tratado.
+    """
+    # Implementar tratamento específico para 'Analítico'
+    df = df.drop_duplicates()
+    if logger:
+        logger.info("Dados da planilha 'Analítico' tratados.")
+    return df
+
+def create_prices_table(df_coeficientes, df_manutencoes, df_analitico, logger=None):
+    """
+    Cria a tabela de preços consolidada.
+
+    Args:
+        df_coeficientes (pd.DataFrame): DataFrame da planilha 'Coeficientes'.
+        df_manutencoes (pd.DataFrame): DataFrame da planilha 'Manutenções'.
+        df_analitico (pd.DataFrame): DataFrame da planilha 'Analítico'.
+        logger (logging.Logger, opcional): Logger para mensagens.
+
+    Returns:
+        pd.DataFrame: DataFrame da tabela de preços consolidada.
+    """
+    # Implementar a lógica para criar a tabela de preços
+    if logger:
+        logger.info("Tabela de preços consolidada criada.")
+    return None
 
 # Função principal para uso como script
 def main(
@@ -411,8 +552,35 @@ def main(
     """
     
     logger = logger_config(log_level)
-    base = load_excel_sinapi(arquivo_xlsx, tipo_base, logger)
+    base = load_especific_excel_sinapi(arquivo_xlsx, tipo_base, logger)
     df = df_improove(base, logger=logger)
+    if df is None:
+        logger.error("Não foi possível carregar os dados do Excel.")
+        return
+    
+    if tipo_base == 'coeficientes':
+        df = treat_coeficientes(df, logger)
+    elif tipo_base == 'manutencoes':
+        df = treat_manutencoes(df, logger)
+    elif tipo_base == 'analitico':
+        df = treat_analitico(df, logger)
+
+    if df is not None:
+        df = df_improove(df, logger=logger)
+        schema_name = f'sinapi_{tipo_base}_data'
+        table_name = f'{tipo_base}_data'
+        engine_base = create_engine(f"postgresql://{user}:{password}@{host}:{port}/{initial_db}", connect_args={'connect_timeout': 30})
+        if create_database_if_not_exists(engine_base, dbname, logger):
+            engine = create_engine(f"postgresql://{user}:{password}@{host}:{port}/{dbname}")
+            schemas_to_create = ["sinapi_coeficientes_data", "sinapi_manutencoes_data", "sinapi_analitico_data"]
+            create_schemas_if_not_exists(engine, schemas_to_create, logger)
+            columns = aspas_column_names(df).columns.tolist()
+            types = [SQL_TO_PANDAS_TYPE.get(str(df[col].dtype), 'TEXT') for col in df.columns]
+            create_tables_if_not_exists(engine, schema_name, table_name, columns, types, logger)
+            insert_data_with_validation(engine, schema_name, table_name, df, batch_size, logger)
+            engine.dispose()
+        engine_base.dispose()
+
     schema_name = f'sinapi_{tipo_base}_data'
     table_name = f'{tipo_base}_data'
     engine_base = create_engine(f"postgresql://{user}:{password}@{host}:{port}/{initial_db}", connect_args={'connect_timeout': 30})
