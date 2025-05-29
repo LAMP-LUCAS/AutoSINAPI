@@ -1,0 +1,8 @@
+argparse
+openpyxl
+pandas
+rastreador_xlsx
+requests
+sqlalchemy
+sys
+tqdm

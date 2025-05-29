@@ -1,0 +1,153 @@
+# AutoSINAPIpostgres
+
+Este repositório tem como objetivo o desenvolvimento open source de uma solução para captação, tratamento e inserção dos dados do SINAPI (Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil) em um banco de dados PostgreSQL de forma estruturada, editável e atualizável de maneira autônoma.
+
+## Objetivos
+
+- Automatizar o download dos dados do SINAPI
+- Tratar e organizar os dados para facilitar consultas e análises
+- Inserir os dados em um banco PostgreSQL, permitindo edição e atualização recorrente
+- Prover scripts e ferramentas para facilitar a manutenção e evolução do processo
+
+## Estrutura do Projeto
+
+```plaintext
+├── sinap_webscraping.py    # Script para download dos arquivos SINAPI
+├── rastreador_xlsx.py      # Ferramenta de análise de arquivos Excel
+├── sql_sinapi_insert.py    # Script de inserção no PostgreSQL
+├── update_requirements.py  # Atualizador de dependências
+├── sql_access.secrets      # Arquivo de configuração do banco (exemplo)
+└── requirements.txt        # Dependências do projeto
+```
+
+## Configuração Inicial
+
+### 1. Clone o repositório
+
+```bash
+git clone https://github.com/seu-usuario/AutoSINAPIpostgres.git
+cd AutoSINAPIpostgres
+```
+
+### 2. Configure o ambiente virtual Python
+
+```bash
+python -m venv venv
+.\venv\Scripts\activate
+```
+
+### 3. Instale as dependências
+
+```bash
+python update_requirements.py  # Gera requirements.txt atualizado
+pip install -r requirements.txt
+```
+
+### 4. Configure o acesso ao PostgreSQL
+
+- Renomeie `sql_access.secrets.example` para `sql_access.secrets`
+- Edite o arquivo com suas credenciais:
+
+```ini
+DB_USER = 'seu_usuario'
+DB_PASSWORD = 'sua_senha'
+DB_HOST = 'localhost'
+DB_PORT = '5432'
+DB_NAME = 'sinapi'
+DB_INITIAL_DB = 'postgres'
+```
+
+## Uso dos Scripts
+
+### 1. Download de Dados SINAPI
+
+O script `sinap_webscraping.py` automatiza o download dos arquivos do SINAPI:
+
+```bash
+python sinap_webscraping.py
+```
+
+Você será solicitado a informar:
+
+- Ano (YYYY)
+- Mês (MM)
+- Tipo de planilha (familias_e_coeficientes, Manutenções, mao_de_obra, Referência)
+- Formato (xlsx, pdf)
+
+### 2. Análise de Arquivos Excel
+
+O `rastreador_xlsx.py` analisa os arquivos Excel baixados:
+
+```bash
+python rastreador_xlsx.py
+```
+
+O script irá:
+
+- Escanear os arquivos Excel no diretório
+- Gerar relatório de células, linhas e colunas
+- Salvar logs em formatos JSON e TXT
+
+### 3. Inserção no PostgreSQL
+
+O script `sql_sinapi_insert.py` processa e insere os dados no banco:
+
+```bash
+python sql_sinapi_insert.py --arquivo_xlsx <caminho> --tipo_base <tipo>
+```
+
+Parâmetros disponíveis:
+
+- `--arquivo_xlsx`: Caminho do arquivo Excel
+- `--tipo_base`: Tipo de dados (insumos, composicao, analitico)
+- `--user`: Usuário do PostgreSQL (opcional, usa .secrets se não informado)
+- `--password`: Senha do PostgreSQL (opcional, usa .secrets se não informado)
+- `--host`: Host do PostgreSQL (opcional, usa .secrets se não informado)
+- `--port`: Porta do PostgreSQL (opcional, usa .secrets se não informado)
+- `--dbname`: Nome do banco (opcional, usa .secrets se não informado)
+
+## Estrutura do Banco de Dados
+
+O banco PostgreSQL é organizado em schemas por tipo de dados:
+
+- `insumos`: Preços e informações de insumos
+- `composicoes`: Composições de serviços
+- `analitico`: Dados analíticos detalhados
+
+## Troubleshooting
+
+### Erros Comuns
+
+1. Erro de conexão PostgreSQL:
+   - Verifique se o PostgreSQL está rodando
+   - Confirme as credenciais em `sql_access.secrets`
+   - Verifique se o banco e schemas existem
+
+2. Erro no download SINAPI:
+   - Verifique sua conexão com a internet
+   - Confirme se o arquivo existe no site da Caixa
+   - Verifique o formato do ano (YYYY) e mês (MM)
+
+3. Erro na análise Excel:
+   - Confirme se o arquivo não está aberto em outro programa
+   - Verifique se há permissão de leitura no diretório
+
+## Como contribuir
+
+1. Faça um fork deste repositório
+2. Crie uma branch para sua feature ou correção
+3. Envie um pull request detalhando as alterações propostas
+
+## Requisitos do Sistema
+
+- Python 3.8+
+- PostgreSQL 12+
+- Bibliotecas Python listadas em `requirements.txt`
+
+## Licença
+
+Este projeto é open source sob os termos da GNU General Public License, versão 3 (GPLv3). Isso significa que você pode utilizar, modificar e distribuir o projeto, inclusive para fins comerciais. Contudo, se você criar derivados ou incorporar este código em outros produtos e distribuí-los, estes também deverão estar sob licença GPLv3, garantindo assim que o código-fonte continue acessível aos usuários.
+
+## Contato
+
+Sugestões, dúvidas ou colaborações são bem-vindas via issues ou pull requests.
