@@ -8,6 +8,17 @@
 # Ignora arquivo .secrets na raiz
 .secrets
 
+# Ignora arquivos de cache
+
+**/*.pyc
+
+**/*.pyo
+
+**/*.pyd
+
+**/*.pyo
+
+
 # =========================
 # Notebooks Jupyter e checkpoints
 # =========================

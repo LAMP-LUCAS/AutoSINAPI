@@ -9,25 +9,48 @@ import json
 from datetime import datetime
 from openpyxl import load_workbook
 
-def scan_excel_directory(diretorio):
+def scan_excel_directory(diretorio=None,formato=None,data=None):
     """Escaneia o diretório e retorna o resultado do processamento dos arquivos .xlsx"""
+    if not diretorio:
+        diretorio = os.getcwd()
+    else:
+        diretorio = diretorio.replace("\\", "/").replace("'", "").strip('"')
+
+    if not formato:
+        formato = 'xlsx'
+    else:
+        formato = formato.replace("\\", "/").replace("'", "").strip('"')
+
+    diretorio = os.path.join(diretorio)
+    print(f'Escaneando o diretório: {diretorio}')
     resultado = {}
+
     for arquivo in os.listdir(diretorio):
-        if not arquivo.endswith('.xlsx'):
+        print(f'    Processando o arquivo: {arquivo}')
+        if not arquivo.endswith(formato.lower()) and not arquivo.endswith(formato.upper()):
+            #if not arquivo.endswith(formato.upper()):
+            print('        Não foram encontrados arquivos .xlsx no diretório.')
             continue
         caminho = os.path.join(diretorio, arquivo)
-        try:
-            wb = load_workbook(caminho, read_only=True)
-            planilhas_info = []
-            for nome_planilha in wb.sheetnames:
-                ws = wb[nome_planilha]
-                dados = get_sheet_data(ws)
-                planilhas_info.append((nome_planilha, dados))
-            resultado[arquivo] = planilhas_info
-            wb.close()
-        except Exception as e:
-            print(f"Erro ao processar {arquivo}: {str(e)}")
+        if data:
+            try:
+                wb = load_workbook(caminho, read_only=True)
+                planilhas_info = []
+                for nome_planilha in wb.sheetnames:
+                    ws = wb[nome_planilha]
+                    dados = get_sheet_data(ws)
+                    planilhas_info.append((nome_planilha, dados))
+                resultado[arquivo] = planilhas_info
+                wb.close()
+            except Exception as e:
+                print(f"    Erro ao processar {arquivo}: {str(e)}")
+        else:
+            resultado[arquivo] = caminho
+
+    print(f'Foram encontrados {len(resultado)} no diretório {diretorio}')
     return resultado
+
+
 
 def get_timestamp():
     """Retorna timestamp formatado para nome de arquivo"""
@@ -114,15 +137,40 @@ def main():
     else:
         diretorio = diretorio.replace("\\", "/").replace("'", "").strip('"')
         
-    print(f'\n    Processando arquivos Excel no diretório: {diretorio}')
+    print(f'\n    Processando arquivos Excel no diretório: {diretorio}\n')
 
     # Processamento dos arquivos
+    resultado = scan_excel_directory(diretorio)
+    formatted = format_output(resultado)
+    print(f"""
+    ==========================================================================
+    ARQUIVOS PROCESSADOS:
+    {formatted}
+    ==========================================================================
+    """)
+    salvar = input('Salvar o log? (s/n): ').strip().lower()
+    if salvar == 's':
+        # Salvando o log
+        log_path = save_log(diretorio, resultado, formatted)
+        print(f"\n    Log completo salvo em: {log_path}\n")
+    else:
+        print("\n    Log não salvo.\n")
+
+
+if __name__ == "__main__":
+    main()
+
+'''
+def processamento_dos_arquivos_xlsx(diretorio):
     resultado = {}
     for arquivo in os.listdir(diretorio):
+        # Verificando se é um arquivo .xlsx
         if not arquivo.endswith('.xlsx'):
+            print('Não foram encontrados arquivos .xlsx no diretório.')
             continue
-            
         caminho = os.path.join(diretorio, arquivo)
+        
+        # Verificando planilhas internas aos xlsx
         try:
             wb = load_workbook(caminho, read_only=True)
             planilhas_info = []
@@ -136,20 +184,7 @@ def main():
             wb.close()
         except Exception as e:
             print(f"Erro ao processar {arquivo}: {str(e)}")
+    
+    return resultado
 
-    # Geração da saída formatada
-    formatted = format_output(resultado)
-    print(f"""
-    ==========================================================================
-    ARQUIVOS PROCESSADOS:
-    {formatted}
-    ==========================================================================
-    """)
-
-    # Salvando o log
-    log_path = save_log(diretorio, resultado, formatted)
-    print(f"\n    Log completo salvo em: {log_path}\n")
-
-if __name__ == "__main__":
-    main()
-
+'''
