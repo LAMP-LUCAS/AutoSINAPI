@@ -2,7 +2,7 @@
 import json
 from datetime import datetime, timedelta
 import os
-from rastreador_xlsx import scan_excel_directory, format_output
+from tools.rastreador_xlsx import scan_excel_directory, format_output
 from pathlib import Path
 
 LOG_FILE = "sinap_webscraping_download_log.json"

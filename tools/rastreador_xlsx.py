@@ -50,8 +50,6 @@ def scan_excel_directory(diretorio=None,formato=None,data=None):
     print(f'Foram encontrados {len(resultado)} no diretório {diretorio}')
     return resultado
 
-
-
 def get_timestamp():
     """Retorna timestamp formatado para nome de arquivo"""
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

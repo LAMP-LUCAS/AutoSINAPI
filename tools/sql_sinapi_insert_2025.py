@@ -1,98 +1,49 @@
-'''import pandas as pd
-import os
-import sinapi_utils
-
-planilhas = ['familias_e_coeficientes', 'Manutenções', 'mao_de_obra', 'Referência']
-formatos = ['xlsx', 'pdf']
-ano = '2025'
-mes = '03'
-
-
-# 1. Carregar o arquivo Excel
-file_path = '{ano}_{mes}/SINAPI-{ano}{mes}-formato-{formato}/SINAPI_{planilha}_{ano}_{mes}.xlsx'
-df = pd.read_excel(file_path)
-
-# 2. Identificar colunas fixas e colunas de estados
-fixed_columns = ['mes/ref', 'cod familia', 'cod insumo', 'descr', 'unid', 'categoria']
-estados_columns = [col for col in df.columns if col not in fixed_columns]
-
-# 3. Realizar o 'unpivot' (melt) para normalizar os dados
-df_normalized = pd.melt(
-    df,
-    id_vars=fixed_columns,
-    value_vars=estados_columns,
-    var_name='estado',
-    value_name='coeficiente'
-)
-
-# 4. Renomear colunas para padrão SQL
-df_normalized = df_normalized.rename(columns={
-    'mes/ref': 'mes_ref',
-    'cod familia': 'cod_familia',
-    'cod insumo': 'cod_insumo',
-    'descr': 'descricao',
-    'unid': 'unidade'
-})
-
-# 5. Tratamento de dados (opcional, mas recomendado)
-# - Converter tipo de data (se necessário)
-# df_normalized['mes_ref'] = pd.to_datetime(df_normalized['mes_ref'], format='%m/%Y')
-
-# - Remover linhas com coeficientes nulos
-df_normalized = df_normalized.dropna(subset=['coeficiente'])
-
-# - Converter estado para maiúsculas
-df_normalized['estado'] = df_normalized['estado'].str.upper()
-
-# 6. Salvar para CSV (para posterior importação via COPY)
-output_csv = 'dados_normalizados.csv'
-df_normalized.to_csv(output_csv, index=False, encoding='utf-8')
-
-print(f"Normalização concluída! Dados salvos em: {output_csv}")
-print(f"Total de linhas originais: {len(df)}")
-print(f"Total de linhas normalizadas: {len(df_normalized)}")
-print(f"Exemplo de dados normalizados:")
-print(df_normalized.head())
-
-# ---------------------------------------------------------
-# 7. (OPCIONAL) Inserção direta no PostgreSQL
-# Requer instalação: pip install sqlalchemy psycopg2
-
-from sqlalchemy import create_engine
-
-# Configurações do banco
-DB_USER = 'seu_usuario'
-DB_PASSWORD = 'sua_senha'
-DB_HOST = 'localhost'
-DB_PORT = '5432'
-DB_NAME = 'seu_banco'
-TABLE_NAME = 'sinapi_insumos'
-
-# Criar conexão
-engine = create_engine(f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
-
-# Inserir dados diretamente
-# df_normalized.to_sql(
-#     name=TABLE_NAME,
-#     con=engine,
-#     if_exists='append',  # ou 'replace' para recriar a tabela
-#     index=False,
-#     method='multi'  # inserção em lote
-# )
-
-# print(f"\nDados inseridos diretamente na tabela {TABLE_NAME}!")
-
-
-'''
-
 import os
 import pandas as pd
-import sinapi_utils
-from sinapi_utils import normalize_text
-import sinap_webscraping
-import rastreador_xlsx
 from datetime import datetime
 from openpyxl import load_workbook
+from .. import sinapi_utils as sinapi
+
+sinapiProcessor = sinapi.SinapiProcessor()
+sinapiDownloader = sinapi.SinapiDownloader()
+sinapiLogger = sinapi.SinapiLogger()
+sinapiDM = sinapi.DatabaseManager()
+sinapiFM = sinapi.FileManager()
+
+normalize_text = sinapiFM.normalize_text()
+
+
+def inserir_dados_df(file_path, matched_sheet, header_id, split_id=0):
+            """
+            Lê dados de uma planilha Excel, normaliza os nomes das colunas e, opcionalmente,
+            realiza o 'melt' (unpivot) nos dados.
+
+            Args:
+            file_path (str): Caminho para o arquivo Excel.
+            matched_sheet (str): Nome da planilha a ser lida.
+            header_id (int): Linha de cabeçalho na planilha.
+            split_id (int, optional): Índice da coluna para realizar o 'melt'. Se 0, não realiza o 'melt'. Defaults to 0.
+
+            Returns:
+            pd.DataFrame: DataFrame resultante.
+            """
+            df = pd.read_excel(file_path, sheet_name=matched_sheet, header=header_id)
+            base = df.copy()
+            base.columns = [normalize_text(col) for col in base.columns]
+
+            if split_id != 0:
+                print(f'    split_id = {split_id}')
+                df_normalized = base.melt(
+                    id_vars=base.columns[:split_id],
+                    value_vars=base.columns[split_id:],
+                    var_name='Estado',
+                    value_name='Coeficiente'
+                )
+                df_normalized.columns = [normalize_text(col) for col in df_normalized.columns]
+            else:
+                df_normalized = base.copy()
+
+            return df_normalized
 
 def main():
     try:
@@ -101,32 +52,8 @@ def main():
         data_ano_referencia = input(f'Digite o ano (YYYY): ')
         data_mes_referencia = input(f'Digite o mes (MM): ')
         formato_arquivos = input(f'Digite o formato dos arquivos (1 - xlsx, 2 - pdf): ')
-
-        # Tratando mes e ano
-        if data_ano_referencia:
-            try:
-                if len(data_ano_referencia) != 4:
-                    print(f'Ano inválido')
-                    exit()
-                if int(data_ano_referencia) < 2025:
-                    tipoBase = 2025
-                    print(f'Base utilizada à partir de 2025')
-                ano = data_ano_referencia
-
-            except ValueError:
-                print(f'Valor {data_ano_referencia} inválido para o ano')
-
-        if data_mes_referencia:
-            try:
-                if len(data_mes_referencia) < 2:
-                    print(f'Mês inválido')
-                    exit()
-                if int(data_mes_referencia) > 12:
-                    print(f'Mês inválido')
-                mes = data_mes_referencia
-            except ValueError:
-                print(f'Valor {data_mes_referencia} inválido para o mes')
-
+        
+        # Validando e Tratando mes e ano
         if formato_arquivos:
             try:
                 if formato_arquivos in ['1', '2']: 
@@ -141,7 +68,21 @@ def main():
                         formato = 'pdf'
             except ValueError:
                     print(f'Valor {formato_arquivos} inválido para o formato do arquivo')
-
+        
+        if sinapi.SinapiDownloader._validar_parametros(data_ano_referencia, data_mes_referencia, formato_arquivos) is False:
+            exit()
+        
+        elif data_ano_referencia:
+            ano = data_ano_referencia
+        elif data_mes_referencia:
+            mes = data_mes_referencia
+        
+        
+        print(f'referencia: {mes}/{ano} | formato: {formato}')
+        exit()
+        
+        
+        
         # verificando se arquivos existem na pasta e listando-os ou perguntando se o usuário quer fazer o download da base.
         diretorio_atual = os.getcwd()
         diretorio = f'{diretorio_atual}/{ano}_{mes}/SINAPI-{ano}-{mes}-formato-{formato}'
@@ -267,43 +208,7 @@ def main():
             print(f'header_id = {header_id}')
 
         
-        def inserir_dados_df(file_path, matched_sheet, header_id, split_id=0):
-            """
-            Lê dados de uma planilha Excel, normaliza os nomes das colunas e, opcionalmente,
-            realiza o 'melt' (unpivot) nos dados.
-
-            Args:
-            file_path (str): Caminho para o arquivo Excel.
-            matched_sheet (str): Nome da planilha a ser lida.
-            header_id (int): Linha de cabeçalho na planilha.
-            split_id (int, optional): Índice da coluna para realizar o 'melt'. Se 0, não realiza o 'melt'. Defaults to 0.
-
-            Returns:
-            pd.DataFrame: DataFrame resultante.
-            """
-            df = pd.read_excel(file_path, sheet_name=matched_sheet, header=header_id)
-            base = df.copy()
-            base.columns = [normalize_text(col) for col in base.columns]
-
-            if split_id != 0:
-                print(f'    split_id = {split_id}')
-                df_normalized = base.melt(
-                    id_vars=base.columns[:split_id],
-                    value_vars=base.columns[split_id:],
-                    var_name='Estado',
-                    value_name='Coeficiente'
-                )
-                df_normalized.columns = [normalize_text(col) for col in df_normalized.columns]
-            else:
-                df_normalized = base.copy()
-
-            return df_normalized
-
-
-
-
-
-
+        
         if isinstance(header_id, list):
             df_normalized = []
             for i,header in enumerate(header_id):
@@ -315,7 +220,7 @@ def main():
             print(df_normalized.head())
             
 
-        print(type(df_normalized))
+        #print(type(df_normalized))
 
     except Exception as e:
         print(f'erro: {e}')
