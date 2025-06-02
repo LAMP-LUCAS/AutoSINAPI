@@ -2,15 +2,22 @@ import os
 import pandas as pd
 from datetime import datetime
 from openpyxl import load_workbook
-from .. import sinapi_utils as sinapi
+from AutoSINAPIpostgres.tools import sql_sinapi_insert_2025
 
-sinapiProcessor = sinapi.SinapiProcessor()
-sinapiDownloader = sinapi.SinapiDownloader()
-sinapiLogger = sinapi.SinapiLogger()
-sinapiDM = sinapi.DatabaseManager()
-sinapiFM = sinapi.FileManager()
 
-normalize_text = sinapiFM.normalize_text()
+
+# sinapiProcessor = SinapiProcessor()
+# sinapiDownloader = SinapiDownloader()
+# sinapiLogger = SinapiLogger()
+# sinapiDM = DatabaseManager()
+# sinapiFM = FileManager()
+# normalize_text = FileManager.normalize_text
+
+# DatabaseManager = sinapi.DatabaseManager
+# SinapiLogger = sinapi.SinapiLogger
+# SinapiProcessor = sinapi.SinapiProcessor
+# FileManager = sinapi.FileManager
+# SinapiDownloader = sinapi.SinapiDownloader
 
 
 def inserir_dados_df(file_path, matched_sheet, header_id, split_id=0):
