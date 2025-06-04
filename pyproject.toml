@@ -5,8 +5,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "autosinapi"
 version = "0.1"
+authors = [
+    {name = "Seu Nome", email = "seu@email.com"},
+]
+description = "Pacote para automação do SINAPI"
+readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "pandas",
-    "openpyxl"
+    "pandas>=2.0",
+    "openpyxl>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
 ]

@@ -1,3 +1,17 @@
+Metadata-Version: 2.4
+Name: autosinapi
+Version: 0.1
+Summary: Pacote para automação do SINAPI
+Author-email: Seu Nome <seu@email.com>
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: pandas>=2.0
+Requires-Dist: openpyxl>=3.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Dynamic: requires-python
+
 # AutoSINAPIpostgres
 
 Este repositório tem como objetivo o desenvolvimento open source de uma solução para captação, tratamento e inserção dos dados do SINAPI (Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil) em um banco de dados PostgreSQL de forma estruturada, editável e atualizável de maneira autônoma.

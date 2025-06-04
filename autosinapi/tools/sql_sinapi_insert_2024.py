@@ -584,6 +584,7 @@ def main(
     schema_name = f'sinapi_{tipo_base}_data'
     table_name = f'{tipo_base}_data'
     engine_base = create_engine(f"postgresql://{user}:{password}@{host}:{port}/{initial_db}", connect_args={'connect_timeout': 30})
+    
     if create_database_if_not_exists(engine_base, dbname, logger):
         engine = create_engine(f"postgresql://{user}:{password}@{host}:{port}/{dbname}")
         schemas_to_create = ["sinapi_composicao_data", "sinapi_composicao_precos", "sinapi_insumos_data", "sinapi_insumos_precos"]
@@ -593,6 +594,7 @@ def main(
         create_tables_if_not_exists(engine, schema_name, table_name, columns, types, logger)
         insert_data_with_validation(engine, schema_name, table_name, df, batch_size, logger)
         engine.dispose()
+    
     engine_base.dispose()
 
 if __name__ == "__main__":

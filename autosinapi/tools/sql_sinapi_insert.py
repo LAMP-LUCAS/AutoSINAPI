@@ -2,23 +2,24 @@ import os
 import pandas as pd
 from datetime import datetime
 from openpyxl import load_workbook
-from AutoSINAPIpostgres.tools import sql_sinapi_insert_2025
+import autosinapi as sinapi
+from sinapi_utils import SinapiProcessor, SinapiDownloader, SinapiLogger, DatabaseManager, FileManager
+
+# Tenta acessar um atributo de cada classe/função importada para verificar se a importação foi bem-sucedida
+try:
+    _ = SinapiProcessor.process_data
+    _ = SinapiDownloader.download
+    _ = SinapiLogger.log
+    _ = DatabaseManager.connect
+    _ = FileManager.normalize_text
+    print("Importação de módulos e funções de autosinapi.sinapi_utils bem-sucedida!")
+except AttributeError as e:
+    print(f"Erro ao verificar a importação: {e}. Algum módulo ou função pode não estar disponível.")
+except ImportError as e:
+    print(f"Erro de importação: {e}. Verifique se o módulo 'autosinapi' está instalado corretamente e se o caminho está correto.")
 
 
-
-# sinapiProcessor = SinapiProcessor()
-# sinapiDownloader = SinapiDownloader()
-# sinapiLogger = SinapiLogger()
-# sinapiDM = DatabaseManager()
-# sinapiFM = FileManager()
-# normalize_text = FileManager.normalize_text
-
-# DatabaseManager = sinapi.DatabaseManager
-# SinapiLogger = sinapi.SinapiLogger
-# SinapiProcessor = sinapi.SinapiProcessor
-# FileManager = sinapi.FileManager
-# SinapiDownloader = sinapi.SinapiDownloader
-
+normalize_text = FileManager.normalize_text
 
 def inserir_dados_df(file_path, matched_sheet, header_id, split_id=0):
             """
@@ -86,9 +87,7 @@ def main():
         
         
         print(f'referencia: {mes}/{ano} | formato: {formato}')
-        exit()
-        
-        
+        exit()                
         
         # verificando se arquivos existem na pasta e listando-os ou perguntando se o usuário quer fazer o download da base.
         diretorio_atual = os.getcwd()
@@ -103,7 +102,6 @@ def main():
         planilhas = list(resultado.keys())
 
         #print(f'planilhas: {planilhas}')
-
         #input do usuário para definir qual planilha utilizar:
 
         print(f'\nEscolha a planilha que deseja utilizar:')
@@ -235,9 +233,6 @@ def main():
     except Exception as KeyboardInterrupt:
         print('\n\nFinalização do programa pelo usuário\n')
         #exit()
-
-    
-
 
 if __name__ == "__main__":
     prog = False
