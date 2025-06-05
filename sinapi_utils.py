@@ -10,11 +10,12 @@ import os
 import zipfile
 import requests
 import time
+from time import sleep
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Union
 from pathlib import Path
 import sqlalchemy
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, URL , make_url
 from tqdm import tqdm
 from openpyxl import load_workbook
 import json
@@ -178,307 +179,30 @@ class FileManager:
             
         return normalized_names
 
-class SinapiDownloader:
-    """Classe para download de arquivos do SINAPI"""
-    
-    def __init__(self, cache_minutes: int = 10):
-        self.logger = SinapiLogger("SinapiDownloader")
-        self.cache_minutes = cache_minutes
-        self.log_file = "sinap_webscraping_download_log.json"
-    
-    def _zip_pathfinder(self, folderName: str, ano: str, mes: str, formato: str = 'xlsx') -> str:
-        folder_name = folderName
-        zip_path = Path(folder_name) / f'SINAPI-{ano}-{mes}-formato-{formato}.zip'
-        if zip_path.exists():
-            self.logger.log('info', f'Arquivo já existe: {zip_path}')
-            return str(zip_path)
-        else:
-            self.logger.log('info', f'Arquivo não existe: {zip_path}')
-            return None
-
-    def _zip_filefinder(self,folderName: str, ano: str, mes: str, formato: str = 'xlsx', dimiss: list = None, target: str = None):
-        """
-        Finds and selects ZIP files within a specified folder based on year, month, and format.
-        Args:
-            folderName (str): The name of the folder to search within.
-            ano (str): The year to search for in the filename.
-            mes (str): The month to search for in the filename.
-            formato (str, optional): The file format to search for in the filename. Defaults to 'xlsx'.
-            dimiss (list, optional): A list of filenames to exclude from the selection. Defaults to None.
-            target (str, optional): The file name to search for in the files search result. Defaults to None
-        Returns:
-            tuple: A tuple containing two dictionaries:
-                - zipFiles (dict): A dictionary where keys are filenames ending with '.zip' and values are their full paths.
-                - selectFile (dict): A dictionary containing selected ZIP files based on the specified criteria,
-                  excluding files present in the `dimiss` list (if provided). Keys are filenames and values are their full paths.
-            None: Returns None if an error occurs during the file search.
-            filepath: Return a filepath if file target is found.
-        Raises:
-            Exception: Logs any exceptions encountered during the file search process.
-        """
-        self.logger.log('info', f'Iniciando pesquisa do arquivo na pasta {folderName}')
-        zipFiles = {}
-        selectFile = {}
+    def read_sql_secrets(self, secrets_path: str) -> tuple:
+        """Lê credenciais SQL com logging"""
         try:
-            path = folderName
-            for arquivo in os.listdir(path):
-                if arquivo.endswith('.zip'):
-                    zipFiles[arquivo] = os.path.join(path, arquivo)
+            with open(secrets_path, 'r') as f:
+                content = f.read()
             
-            for file, filepath in zipFiles.items():
-                if target and file == target:
-                    return filepath
-
-                if f'SINAPI-{ano}-{mes}-formato-{formato}.zip' in file:
-                    if dimiss and file in dimiss:
-                        continue
-                    else:
-                        selectFile[file] = filepath
+            credentials = parse_secrets(content)
+            required_keys = {'DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT', 'DB_NAME'}
             
-            return zipFiles, selectFile
-        
+            if not required_keys.issubset(credentials):
+                missing = required_keys - set(credentials.keys())
+                raise ValueError(f"Credenciais incompletas. Faltando: {', '.join(missing)}")
+            
+            return (
+                credentials['DB_USER'],
+                credentials['DB_PASSWORD'],
+                credentials['DB_HOST'],
+                credentials['DB_PORT'],
+                credentials['DB_NAME'],
+                credentials.get('DB_INITIAL_DB', 'postgres')
+            )
         except Exception as e:
-            self.logger.log('error', f'Erro ao encontrar arquivo: {str(e)}')
-            return None
-                        
-    def download_file(self, ano: str, mes: str, formato: str = 'xlsx',sleeptime: int = 2, count: int = 4) -> Optional[str]:
-        """
-        Baixa arquivo do SINAPI se necessário
-        Args:
-            ano (str): Ano de referência (YYYY)
-            mes (str): Mês de referência (MM)
-            formato (str): Formato do arquivo ('xlsx' ou 'pdf')
-            sleeptime (int): Tempo de espera entre tentativas de download
-        Returns:
-            Optional[str]: Caminho do arquivo baixado ou None se falhou
-        """
-        if not self._validar_parametros(ano, mes, formato):
-            return None
-            
-        if not self._pode_baixar(ano, mes):
-            return None
-            
-        url = f'https://www.caixa.gov.br/Downloads/sinapi-relatorios-mensais/SINAPI-{ano}-{mes}-formato-{formato}.zip'
-        folder_name = f'./{ano}_{mes}'
-        
-        #print('iniciando pesquisa...')
-        zip_path = self._zip_pathfinder(folder_name,ano,mes,formato)
-        
-        if zip_path:
-            return str(zip_path)
-        
-        try:
-            os.makedirs(folder_name, exist_ok=True)
-            try:
-                try:
-                    download = self._download_with_retry(url, zip_path,retry_delays = [10, 30, 60], timeout=120)
-                    self.logger.log('info', f'Download concluído: {zip_path}')
-                    if download is True:
-                        self._registrar_download(ano, mes)
-                        return str(zip_path)
-                    else:
-                        raise
-                except Exception as e:
-                    self.logger.log('warning', f'Primeira tentativa de download falhou: {str(e)}')
-                    self.logger.log('info', f'\nTentando {count} downloads com proxies...')
-                    self._download_with_proxies(url, zip_path, str(ano), str(mes), int(sleeptime),count)
-                    self._registrar_download(ano, mes)
-                    return str(zip_path)
-            
-            except Exception as e:
-                self.logger.log('error', f'Erro no download: {str(e)}')
-                return None
-            
-            
-        except Exception as e:
-            self.logger.log('error', f'Erro no download: {str(e)}')
-            return None
-
-    def _download_with_proxies(self, url: str, zip_path: Path, ano: str, mes: str,sleeptime: int,count: int = 0) -> None:
-        """
-        Baixa um arquivo usando uma lista de proxies públicos.
-        
-        Args:
-            url (str): URL do arquivo a ser baixado.
-            zip_path (Path): Caminho local para salvar o arquivo.
-            ano (str): Ano de referência (YYYY)
-            mes (str): Mês de referência (MM)
-        
-        Raises:
-            Exception: Se o download falhar após tentar vários proxies.
-        """
-        proxies_url = "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.json"
-        try:
-            proxies_resp = requests.get(proxies_url, timeout=30)
-            proxies_resp.raise_for_status()
-            proxies_list = proxies_resp.json()
-            random.shuffle(proxies_list)
-        except Exception as e:
-            raise Exception(f'Erro ao obter lista de proxies: {str(e)}') from e
-
-        success = False
-        self.logger.log('info', f'Tentando baixar com {len(proxies_list)} proxies...')
-        if count == 0:
-            count = len(proxies_list)
-        else:
-            for e, proxy_info in [count , proxies_list]:
-                self.logger.log('info', f'\n=============================\n    >>>>>>> Tentativa nª{e+1} / {len(proxies_list)} <<<<<<<\n')
-                proxy = proxy_info.get("proxy")
-                if not proxy:
-                    self.logger.log('warning', 'Proxy não encontrado na lista, pulando.')
-                    continue
-
-                proxies = {
-                    "http": f"http://{proxy}",
-                    "https": f"http://{proxy}",
-                }
-
-                try:
-                    self.logger.log('info', f'Tentando download com proxy: {proxy}')
-                    session = requests.Session()
-                    adapter = requests.adapters.HTTPAdapter(max_retries=1)
-                    session.mount('https://', adapter)
-                    response = session.get(url, timeout=120, allow_redirects=True, proxies=proxies)
-                    response.raise_for_status()
-                    with open(zip_path, 'wb') as f:
-                        f.write(response.content)
-                    self.logger.log('info', f'Download concluído com proxy: {proxy}')
-                    success = True
-                    break  # Encerra o loop assim que um proxy funciona
-                except Exception as e:
-                    self.logger.log('warning', f'Falha com proxy {proxy}: {str(e)}\n')
-                    time.sleep(sleeptime)  # Adiciona um pequeno delay antes de tentar o próximo proxy
-
-            if not success:
-                raise Exception('Não foi possível baixar o arquivo com nenhum proxy')
-
-            self._registrar_download(ano, mes)
-            return str(zip_path)
-
-    def unzip_file(self, zip_path: Union[str, Path]) -> Optional[str]:
-        """
-        Extrai um arquivo ZIP do SINAPI
-        Args:
-            zip_path: Caminho do arquivo ZIP
-        Returns:
-            Optional[str]: Caminho da pasta extraída ou None se falhou
-        """
-        zip_path = Path(zip_path)
-        if not zip_path.exists():
-            self.logger.log('error', f'Arquivo não existe: {zip_path}')
-            return None
-            
-        extraction_path = zip_path.parent / zip_path.stem
-        
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extraction_path)
-            self.logger.log('info', f'Arquivos extraídos em: {extraction_path}')
-            return str(extraction_path)
-        except Exception as e:
-            self.logger.log('error', f'Erro ao extrair: {str(e)}')
-            return None
-
-    def _validar_parametros(self, ano: str, mes: str, formato: str) -> bool:
-        """Valida os parâmetros de entrada"""
-        try:
-            if len(ano) != 4 or len(mes) != 2:
-                raise ValueError("Ano deve ter 4 dígitos e mês deve ter 2 dígitos")
-            if int(mes) < 1 or int(mes) > 12:
-                raise ValueError("Mês deve estar entre 01 e 12")
-            if formato not in ['xlsx', 'pdf']:
-                raise ValueError("Formato deve ser 'xlsx' ou 'pdf'")
-            return True
-        except Exception as e:
-            self.logger.log('error', f'Parâmetros inválidos: {str(e)}')
-            return False
-
-    def _pode_baixar(self, ano: str, mes: str) -> bool:
-        """Verifica se já passou o tempo mínimo desde o último download"""
-        chave = f"{ano}_{mes}"
-        agora = datetime.now()
-        
-        if not os.path.exists(self.log_file):
-            return True
-            
-        try:
-            with open(self.log_file, "r") as f:
-                log = json.load(f)
-            ultimo = log.get(chave)
-            if ultimo:
-                ultimo_dt = datetime.fromisoformat(ultimo)
-                if agora - ultimo_dt < timedelta(minutes=self.cache_minutes):
-                    tempo_restante = timedelta(minutes=self.cache_minutes) - (agora - ultimo_dt)
-                    self.logger.log('warning', 
-                        f"Download recente detectado. Aguarde {tempo_restante} antes de tentar novamente.")
-                    return False
-        except Exception as e:
-            self.logger.log('error', f'Erro ao ler log: {str(e)}')
-            
-        return True
-
-    def _registrar_download(self, ano: str, mes: str) -> None:
-        """Registra a data/hora do download no log"""
-        chave = f"{ano}_{mes}"
-        agora = datetime.now().isoformat()
-        log = {}
-        
-        if os.path.exists(self.log_file):
-            try:
-                with open(self.log_file, "r") as f:
-                    log = json.load(f)
-            except Exception:
-                pass
-                
-        log[chave] = agora
-        
-        with open(self.log_file, "w") as f:
-            json.dump(log, f)
-
-    def _download_with_retry(self, url: str, zip_path: Path, retry_delays: list = [10, 30, 60], timeout: int = 120) -> None:
-        """Faz o download com retry em caso de falha com delays configuráveis
-            Args:
-                url (str): URL do arquivo a ser baixado.
-                zip_path (Path): Caminho local para salvar o arquivo baixado.
-                retry_delays (list, optional): Lista de tempos de espera em segundos entre cada tentativa. Defaults to [10, 30, 60].
-                timeout (int, optional): Tempo máximo em segundos para aguardar uma resposta do servidor. Defaults to 120.
-            Returns:
-                bool: True se o download for bem-sucedido.
-            Raises:
-                requests.exceptions.HTTPError: Se ocorrer um erro HTTP durante o download.
-                Exception: Se ocorrer qualquer outro erro durante o download.
-            """
-
-        session = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(max_retries=len(retry_delays))
-        session.mount('https://', adapter)
-
-        for attempt, delay in enumerate(retry_delays):
-            try:
-                self.logger.log('info', f'Tentativa de download {attempt + 1} de {len(retry_delays)}, aguardando {delay} segundos...')
-                time.sleep(delay)
-                response = session.get(url, timeout=timeout, allow_redirects=True)
-                response.raise_for_status()
-                
-                with open(zip_path, 'wb') as f:
-                    f.write(response.content)
-                self.logger.log('info', f'Download concluído: {zip_path}')
-                return True
-                
-            except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 404:
-                    self.logger.log('error', 'Arquivo não encontrado no servidor')
-                else:
-                    self.logger.log('error', f'Erro HTTP na tentativa {attempt + 1}: {str(e)}\n')
-                
-                
-            except Exception as e:
-                self.logger.log('error', f'Erro no download na tentativa {attempt + 1}: {str(e)}\n')
-                if attempt == len(retry_delays) - 1:
-                    raise  # Relevanta a exceção na última tentativa
-
-        return False  # Retorna False se todas as tentativas falharem
-
+            self.logger.log('error', f"Erro ao ler secrets: {e}")
+            raise
 
 class DatabaseManager:
     """Classe para gerenciar operações de banco de dados"""
@@ -674,51 +398,407 @@ class DatabaseManager:
             self.logger.log('error', f"Erro no backup de {table_name}: {e}")
             raise
 
-    def sql_secrets_access(self,secrets_file_path:str):
-        """
-        Lê e retorna as credenciais SQL do arquivo .secrets.
+    def get_connection_info(self) -> dict:
+        """Retorna informações de conexão"""
+        url = make_url(self.engine.url)
+        return {
+            'user': url.username,
+            'host': url.host,
+            'port': url.port,
+            'dbname': url.database
+        }
+    
+    def table_exists(self, schema: str, table: str) -> bool:
+        """Verifica se tabela existe"""
+        try:
+            query = text(f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = :schema 
+                    AND table_name = :table
+                )
+            """)
+            result = self.execute_query(query, {'schema': schema, 'table': table})
+            return result.iloc[0, 0]
+        except Exception:
+            return False
+    
+    def optimize_inserts(self):
+        """Configura otimizações para inserções em massa"""
+        # Desativa triggers e constraints temporariamente
+        self.execute_query("SET session_replication_role = 'replica'")
+    
+    def restore_defaults(self):
+        """Restaura configurações padrão do banco"""
+        self.execute_query("SET session_replication_role = 'origin'")
 
+class DatabaseConnection:
+    """Gerenciador de contexto para conexão segura"""
+    
+    def __init__(self, secrets_path: str, log_level: str = 'info'):
+        
+        self.secrets_path = secrets_path
+        self.log_level = log_level
+        self.db_manager = None
+    
+    def __enter__(self) -> DatabaseManager:
+        self.db_manager = create_db_manager(self.secrets_path, self.log_level)
+        return self.db_manager
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        logger = SinapiLogger("DatabaseConnection")
+        if self.db_manager:
+            self.db_manager.engine.dispose()
+        if exc_type:
+            logger.log('error', f"Erro durante operação de banco: {exc_val}")
+        return False
+    
+    @staticmethod
+    def create_database_connection(params: dict) -> DatabaseManager:
+        """
+        Cria conexão com o banco de dados de forma otimizada
+        
         Args:
-            secrets_file_path (str): Caminho do arquivo de segredos com as credenciais do banco.
+            params: Dicionário de parâmetros contendo:
+                - sql_secrets: Caminho para o arquivo de secrets
+                - log_level: Nível de log
+        
         Returns:
-            tuple: (user, password, host, port, dbname, initial_db)
-        Raises:
-            FileNotFoundError: Se o arquivo de segredos não for encontrado.
-            ValueError: Se as credenciais estiverem incompletas.
+            Instância configurada de DatabaseManager
         """
-        credentials = {}
+        logger = SinapiLogger("DatabaseConnection")
+        file_manager = FileManager()
+        
         try:
-            with open(secrets_file_path, 'r') as f:
-                for line in f:
-                    match = re.match(r"\s*([A-Z_]+)\s*=\s*'([^']*)'", line)
-                    if match:
-                        key, value = match.groups()
-                        credentials[key] = value
-
-            user = credentials.get('DB_USER')
-            password = credentials.get('DB_PASSWORD')
-            host = credentials.get('DB_HOST')
-            port = credentials.get('DB_PORT')
-            dbname = credentials.get('DB_NAME')
-            initial_db = credentials.get('DB_INITIAL_DB', 'postgres')
-
-            if None in [user, password, host, port, dbname]:
-                raise ValueError("Credenciais incompletas no arquivo de segredos.")
-
-            return user, password, host, port, dbname, initial_db
-
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Arquivo '{secrets_file_path}' não encontrado.")
+            # Obtenção de credenciais
+            creds = file_manager.read_sql_secrets(params['sql_secrets'])
+            user, pwd, host, port, dbname, initial_db = creds
+            
+            # Teste de conexão
+            test_conn_str = f"postgresql://{user}:{pwd}@{host}:{port}/{initial_db}"
+            test_connection(test_conn_str)
+            
+            # Conexão principal
+            main_conn_str = f"postgresql://{user}:{pwd}@{host}:{port}/{dbname}"
+            db_manager = DatabaseManager(main_conn_str, params.get('log_level', 'info'))
+            
+            # Atualização de parâmetros
+            conn_info = db_manager.get_connection_info()
+            params.update({
+                **conn_info,
+                # Segurança penas certifique-se de que params não será usado para logar ou expor informações sensíveis em outro ponto do sistema.
+                'password': '********',  
+                'initial_db': initial_db
+            })
+            
+            return db_manager
+            
         except Exception as e:
-            raise RuntimeError(f"Erro ao ler o arquivo '{secrets_file_path}': {e}")
+            logger.log('error', f"Falha crítica na conexão com o banco: {e}")
+            raise
 
-    def database_conect(self,user: str,password:str,host:str,port: str='5432', dbname:str = 'postgres',connect_args: dict=None):
-        try:
-            engine_base = create_engine(f"postgresql://{user}:{password}@{host}:{port}/{dbname}", connect_args=connect_args)
-            return engine_base
-        except Exception as e:
-            self.logger.log('error', f"Erro ao conectar ao banco de dados: {e}")
+class SinapiDownloader:
+    """Classe para download de arquivos do SINAPI"""
+    
+    def __init__(self, cache_minutes: int = 10):
+        self.logger = SinapiLogger("SinapiDownloader")
+        self.cache_minutes = cache_minutes
+        self.log_file = "sinap_webscraping_download_log.json"
+    
+    def _zip_pathfinder(self, folderName: str, ano: str, mes: str, formato: str = 'xlsx') -> str:
+        folder_name = folderName
+        zip_path = Path(folder_name) / f'SINAPI-{ano}-{mes}-formato-{formato}.zip'
+        if zip_path.exists():
+            self.logger.log('info', f'Arquivo já existe: {zip_path}')
+            return str(zip_path)
+        else:
+            self.logger.log('info', f'Arquivo não existe: {zip_path}')
             return None
+
+    def _zip_filefinder(self,folderName: str, ano: str, mes: str, formato: str = 'xlsx', dimiss: list = None, target: str = None):
+        """
+        Finds and selects ZIP files within a specified folder based on year, month, and format.
+        Args:
+            folderName (str): The name of the folder to search within.
+            ano (str): The year to search for in the filename.
+            mes (str): The month to search for in the filename.
+            formato (str, optional): The file format to search for in the filename. Defaults to 'xlsx'.
+            dimiss (list, optional): A list of filenames to exclude from the selection. Defaults to None.
+            target (str, optional): The file name to search for in the files search result. Defaults to None
+        Returns:
+            tuple: A tuple containing two dictionaries:
+                - zipFiles (dict): A dictionary where keys are filenames ending with '.zip' and values are their full paths.
+                - selectFile (dict): A dictionary containing selected ZIP files based on the specified criteria,
+                  excluding files present in the `dimiss` list (if provided). Keys are filenames and values are their full paths.
+            None: Returns None if an error occurs during the file search.
+            filepath: Return a filepath if file target is found.
+        Raises:
+            Exception: Logs any exceptions encountered during the file search process.
+        """
+        self.logger.log('info', f'Iniciando pesquisa do arquivo na pasta {folderName}')
+        zipFiles = {}
+        selectFile = {}
+        try:
+            path = folderName
+            for arquivo in os.listdir(path):
+                if arquivo.endswith('.zip'):
+                    zipFiles[arquivo] = os.path.join(path, arquivo)
+            
+            for file, filepath in zipFiles.items():
+                if target and file == target:
+                    return filepath
+
+                if f'SINAPI-{ano}-{mes}-formato-{formato}.zip' in file:
+                    if dimiss and file in dimiss:
+                        continue
+                    else:
+                        selectFile[file] = filepath
+            
+            return zipFiles, selectFile
+        
+        except Exception as e:
+            self.logger.log('error', f'Erro ao encontrar arquivo: {str(e)}')
+            return None
+                        
+    def download_file(self, ano: str, mes: str, formato: str = 'xlsx',sleeptime: int = 2, count: int = 4) -> Optional[str]:
+        """
+        Baixa arquivo do SINAPI se necessário
+        Args:
+            ano (str): Ano de referência (YYYY)
+            mes (str): Mês de referência (MM)
+            formato (str): Formato do arquivo ('xlsx' ou 'pdf')
+            sleeptime (int): Tempo de espera entre tentativas de download
+        Returns:
+            Optional[str]: Caminho do arquivo baixado ou None se falhou
+        """
+        if not self._validar_parametros(ano, mes, formato):
+            return None
+            
+        if not self._pode_baixar(ano, mes):
+            return None
+            
+        url = f'https://www.caixa.gov.br/Downloads/sinapi-relatorios-mensais/SINAPI-{ano}-{mes}-formato-{formato}.zip'
+        folder_name = f'./{ano}_{mes}'
+        
+        #print('iniciando pesquisa...')
+        zip_path = self._zip_pathfinder(folder_name,ano,mes,formato)
+        
+        if zip_path:
+            return str(zip_path)
+        
+        try:
+            os.makedirs(folder_name, exist_ok=True)
+            try:
+                try:
+                    download = self._download_with_retry(url, zip_path,retry_delays = [10, 30, 60], timeout=120)
+                    self.logger.log('info', f'Download concluído: {zip_path}')
+                    if download is True:
+                        self._registrar_download(ano, mes)
+                        return str(zip_path)
+                    else:
+                        raise
+                except Exception as e:
+                    self.logger.log('warning', f'Primeira tentativa de download falhou: {str(e)}')
+                    self.logger.log('info', f'\nTentando {count} downloads com proxies...')
+                    self._download_with_proxies(url, zip_path, str(ano), str(mes), int(sleeptime),count)
+                    self._registrar_download(ano, mes)
+                    return str(zip_path)
+            
+            except Exception as e:
+                self.logger.log('error', f'Erro no download: {str(e)}')
+                return None
+            
+            
+        except Exception as e:
+            self.logger.log('error', f'Erro no download: {str(e)}')
+            return None
+
+    def _download_with_proxies(self, url: str, zip_path: Path, ano: str, mes: str,sleeptime: int,count: int = 0) -> None:
+        """
+        Baixa um arquivo usando uma lista de proxies públicos.
+        
+        Args:
+            url (str): URL do arquivo a ser baixado.
+            zip_path (Path): Caminho local para salvar o arquivo.
+            ano (str): Ano de referência (YYYY)
+            mes (str): Mês de referência (MM)
+        
+        Raises:
+            Exception: Se o download falhar após tentar vários proxies.
+        """
+        proxies_url = "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/all/data.json"
+        try:
+            proxies_resp = requests.get(proxies_url, timeout=30)
+            proxies_resp.raise_for_status()
+            proxies_list = proxies_resp.json()
+            random.shuffle(proxies_list)
+        except Exception as e:
+            raise Exception(f'Erro ao obter lista de proxies: {str(e)}') from e
+
+        success = False
+        self.logger.log('info', f'Tentando baixar com {len(proxies_list)} proxies...')
+        if count == 0:
+            count = len(proxies_list)
+        else:
+            for i,attempt in enumerate(range(count)):
+                self.logger.log('info', f'\n=============================\n    >>>>>>> Tentativa nª{i+1} / {len(proxies_list)} <<<<<<<\n')
+                proxy_info = random.choice(proxies_list)
+                proxy = proxy_info.get("proxy")
+                if not proxy:
+                    self.logger.log('warning', 'Proxy não encontrado na lista, pulando.')
+                    continue
+
+                proxies = {
+                    "http": f"http://{proxy}",
+                    "https": f"http://{proxy}",
+                }
+
+                try:
+                    self.logger.log('info', f'Tentando download com proxy: {proxy}')
+                    session = requests.Session()
+                    adapter = requests.adapters.HTTPAdapter(max_retries=1)
+                    session.mount('https://', adapter)
+                    response = session.get(url, timeout=120, allow_redirects=True, proxies=proxies)
+                    response.raise_for_status()
+                    with open(zip_path, 'wb') as f:
+                        f.write(response.content)
+                    self.logger.log('info', f'Download concluído com proxy: {proxy}')
+                    success = True
+                    break  # Encerra o loop assim que um proxy funciona
+                except Exception as e:
+                    self.logger.log('warning', f'Falha com proxy {proxy}: {str(e)}\n')
+                    time.sleep(sleeptime)  # Adiciona um pequeno delay antes de tentar o próximo proxy
+
+            if not success:
+                raise Exception('Não foi possível baixar o arquivo com nenhum proxy')
+
+            self._registrar_download(ano, mes)
+            return str(zip_path)
+
+    def unzip_file(self, zip_path: Union[str, Path]) -> Optional[str]:
+        """
+        Extrai um arquivo ZIP do SINAPI
+        Args:
+            zip_path: Caminho do arquivo ZIP
+        Returns:
+            Optional[str]: Caminho da pasta extraída ou None se falhou
+        """
+        zip_path = Path(zip_path)
+        if not zip_path.exists():
+            self.logger.log('error', f'Arquivo não existe: {zip_path}')
+            return None
+            
+        extraction_path = zip_path.parent / zip_path.stem
+        
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extraction_path)
+            self.logger.log('info', f'Arquivos extraídos em: {extraction_path}')
+            return str(extraction_path)
+        except Exception as e:
+            self.logger.log('error', f'Erro ao extrair: {str(e)}')
+            return None
+
+    def _validar_parametros(self, ano: str, mes: str, formato: str) -> bool:
+        """Valida os parâmetros de entrada"""
+        try:
+            if len(ano) != 4 or len(mes) != 2:
+                raise ValueError("Ano deve ter 4 dígitos e mês deve ter 2 dígitos")
+            if int(mes) < 1 or int(mes) > 12:
+                raise ValueError("Mês deve estar entre 01 e 12")
+            if formato not in ['xlsx', 'pdf']:
+                raise ValueError("Formato deve ser 'xlsx' ou 'pdf'")
+            return True
+        except Exception as e:
+            self.logger.log('error', f'Parâmetros inválidos: {str(e)}')
+            return False
+
+    def _pode_baixar(self, ano: str, mes: str) -> bool:
+        """Verifica se já passou o tempo mínimo desde o último download"""
+        chave = f"{ano}_{mes}"
+        agora = datetime.now()
+        
+        if not os.path.exists(self.log_file):
+            return True
+            
+        try:
+            with open(self.log_file, "r") as f:
+                log = json.load(f)
+            ultimo = log.get(chave)
+            if ultimo:
+                ultimo_dt = datetime.fromisoformat(ultimo)
+                if agora - ultimo_dt < timedelta(minutes=self.cache_minutes):
+                    tempo_restante = timedelta(minutes=self.cache_minutes) - (agora - ultimo_dt)
+                    self.logger.log('warning', 
+                        f"Download recente detectado. Aguarde {tempo_restante} antes de tentar novamente.")
+                    return False
+        except Exception as e:
+            self.logger.log('error', f'Erro ao ler log: {str(e)}')
+            
+        return True
+
+    def _registrar_download(self, ano: str, mes: str) -> None:
+        """Registra a data/hora do download no log"""
+        chave = f"{ano}_{mes}"
+        agora = datetime.now().isoformat()
+        log = {}
+        
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, "r") as f:
+                    log = json.load(f)
+            except Exception:
+                pass
+                
+        log[chave] = agora
+        
+        with open(self.log_file, "w") as f:
+            json.dump(log, f)
+
+    def _download_with_retry(self, url: str, zip_path: Path, retry_delays: list = [10, 30, 60], timeout: int = 120) -> None:
+        """Faz o download com retry em caso de falha com delays configuráveis
+            Args:
+                url (str): URL do arquivo a ser baixado.
+                zip_path (Path): Caminho local para salvar o arquivo baixado.
+                retry_delays (list, optional): Lista de tempos de espera em segundos entre cada tentativa. Defaults to [10, 30, 60].
+                timeout (int, optional): Tempo máximo em segundos para aguardar uma resposta do servidor. Defaults to 120.
+            Returns:
+                bool: True se o download for bem-sucedido.
+            Raises:
+                requests.exceptions.HTTPError: Se ocorrer um erro HTTP durante o download.
+                Exception: Se ocorrer qualquer outro erro durante o download.
+            """
+
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(max_retries=len(retry_delays))
+        session.mount('https://', adapter)
+
+        for attempt, delay in enumerate(retry_delays):
+            try:
+                self.logger.log('info', f'Tentativa de download {attempt + 1} de {len(retry_delays)}, aguardando {delay} segundos...')
+                time.sleep(delay)
+                response = session.get(url, timeout=timeout, allow_redirects=True)
+                response.raise_for_status()
+                
+                with open(zip_path, 'wb') as f:
+                    f.write(response.content)
+                self.logger.log('info', f'Download concluído: {zip_path}')
+                return True
+                
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    self.logger.log('error', 'Arquivo não encontrado no servidor')
+                else:
+                    self.logger.log('error', f'Erro HTTP na tentativa {attempt + 1}: {str(e)}\n')
+                
+                
+            except Exception as e:
+                self.logger.log('error', f'Erro no download na tentativa {attempt + 1}: {str(e)}\n')
+                if attempt == len(retry_delays) - 1:
+                    raise  # Relevanta a exceção na última tentativa
+
+        return False  # Retorna False se todas as tentativas falharem
+
 
 class SinapiProcessor:
     """Classe para processamento específico das planilhas SINAPI"""
@@ -738,8 +818,9 @@ class SinapiProcessor:
         Returns:
             DataFrame: Dados processados
         """
-        try:
-            self.logger.log('info', f'Processando planilha {sheet_name} do arquivo {file_path}')
+        #iniciando
+        self.logger.log('info', f'Processando planilha {sheet_name} do arquivo {file_path}')
+        try:            
             df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_id)
             
             # Normaliza nomes das colunas
@@ -754,13 +835,16 @@ class SinapiProcessor:
                     value_vars=df.columns[split_id:],
                     var_name='ESTADO',
                     value_name='COEFICIENTE'
-                )
+                    )
                 
             return df
             
         except Exception as e:
             self.logger.log('error', f'Erro ao processar planilha: {str(e)}')
             raise
+        
+    #final
+        
     
     def identify_sheet_type(self, sheet_name: str, table_names: List[str] = None) -> Dict[str, int]:
         """
@@ -874,3 +958,100 @@ class SinapiProcessor:
             self.logger.log('error', f'Erro na limpeza dos dados: {str(e)}')
             raise
 
+
+
+#Funções Auxiliares
+
+def create_db_manager(secrets_path: str, log_level: str = 'info') -> DatabaseManager:
+    """
+    Cria e retorna um DatabaseManager configurado a partir de arquivo de secrets
+    
+    Args:
+        secrets_path: Caminho completo para o arquivo .secrets
+        log_level: Nível de log desejado
+        
+    Returns:
+        Instância configurada de DatabaseManager
+        
+    Raises:
+        FileNotFoundError: Quando arquivo não existe
+        ConnectionError: Quando falha teste de conexão
+        ValueError: Quando credenciais incompletas
+    """
+    # Validação inicial do arquivo
+    if not os.path.isfile(secrets_path):
+        raise FileNotFoundError(f"Arquivo de secrets não encontrado: {secrets_path}")
+    
+    # Leitura das credenciais
+    try:
+        with open(secrets_path, 'r') as f:
+            content = f.read()
+        credentials = parse_secrets(content)
+    except Exception as e:
+        raise RuntimeError(f"Falha na leitura do arquivo secrets: {e}") from e
+
+    # Validação mínima das credenciais
+    required_keys = {'DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT', 'DB_NAME'}
+    if not required_keys.issubset(credentials):
+        missing = required_keys - set(credentials.keys())
+        raise ValueError(f"Credenciais incompletas. Faltando: {', '.join(missing)}")
+
+    # Teste de conexão com banco inicial
+    test_connection(
+        user=credentials['DB_USER'],
+        password=credentials['DB_PASSWORD'],
+        host=credentials['DB_HOST'],
+        port=credentials['DB_PORT'],
+        database=credentials.get('DB_INITIAL_DB', 'postgres')
+    )
+
+    # Criação da connection string definitiva
+    target_db = credentials['DB_NAME']
+    conn_str = format_connection_string(
+        user=credentials['DB_USER'],
+        password=credentials['DB_PASSWORD'],
+        host=credentials['DB_HOST'],
+        port=credentials['DB_PORT'],
+        database=target_db
+    )
+
+    # Cria e retorna o DatabaseManager
+    return DatabaseManager(
+        connection_string=conn_str,
+        log_level=log_level
+    )
+
+def format_connection_string(user: str, password: str, host: str, port: str, database: str) -> str:
+    """Formata a string de conexão de forma segura (usa SQLAlchemy URL para evitar injeção)"""
+    return URL.create(
+        drivername="postgresql",
+        username=user,
+        password=password,
+        host=host,
+        port=port,
+        database=database
+    ).render_as_string(hide_password=False)
+
+def test_connection(conn_str: str, timeout: int = 5, retries: int = 3):
+    """Testa conexão com retentativas automáticas (ÚNICA VERSÃO)"""
+    for attempt in range(retries):
+        try:
+            engine = create_engine(conn_str, connect_args={'connect_timeout': timeout})
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return
+        except Exception as e:
+            if attempt < retries - 1:
+                sleep(2 ** attempt)  # Backoff exponencial
+            else:
+                raise ConnectionError(f"Falha na conexão após {retries} tentativas: {e}")
+            
+def parse_secrets(content: str) -> dict:
+    """Extrai credenciais do conteúdo do arquivo secrets"""
+    credentials = {}
+    for line in content.splitlines():
+        match = re.match(r"\s*([A-Z_]+)\s*=\s*'([^']*)'", line)
+        if match:
+            key, value = match.groups()
+            credentials[key] = value
+    return credentials
