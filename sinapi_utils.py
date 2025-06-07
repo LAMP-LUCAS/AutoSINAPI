@@ -64,13 +64,14 @@ class ExcelProcessor:
     def __init__(self):
         self.logger = SinapiLogger("ExcelProcessor")
     
-    def scan_directory(self, diretorio: str = None, formato: str = 'xlsx', data: bool = False) -> Dict:
+    def scan_directory(self, diretorio: str = None, formato: str = 'xlsx', data: bool = False,sheet: dict=None) -> Dict:
         """
         Escaneia um diretório em busca de arquivos Excel
         Args:
             diretorio (str): Caminho do diretório
             formato (str): Formato dos arquivos ('xlsx', 'xls', etc)
             data (bool): Se True, processa os dados das planilhas
+            sheet (dict): {sheet_name:sheet_path} Dicionário com as planilhas a terem os dados extraídos.
         Returns:
             Dict: Resultados do processamento
         """
@@ -85,12 +86,31 @@ class ExcelProcessor:
             for arquivo in os.listdir(diretorio):
                 if not arquivo.lower().endswith(formato.lower()):
                     continue
-                    
+
                 caminho = diretorio / arquivo
-                self.logger.log('info', f'Processando: {arquivo}')
+                self.logger.log('info', f'Verificando: {arquivo}')
                 
-                if data:
+                if data and sheet:
+                    if data and isinstance(sheet, dict) and arquivo in list(sheet.keys()):
+                        for sheetName in list(sheet.keys()):
+                            self.logger.log('info', f'      Processando {arquivo}')
+                            try:
+                                self.logger.log('info', f'      Processando {arquivo}')
+                                wb = load_workbook(caminho, read_only=True)
+                                planilhas_info = []
+                                for nome_planilha in wb.sheetnames:
+                                    ws = wb[nome_planilha]
+                                    dados = self.get_sheet_data(ws)
+                                    planilhas_info.append((nome_planilha, dados))
+                                resultado[arquivo] = planilhas_info
+                                wb.close()
+                                
+                            except Exception as e:
+                                self.logger.log('error', f'Erro ao processar {arquivo} no caminho "{path}" : {str(e)}\n   {list(sheet.keys())}')
+                
+                elif data and not sheet:
                     try:
+                        self.logger.log('info', f'      Processando {arquivo}')
                         wb = load_workbook(caminho, read_only=True)
                         planilhas_info = []
                         for nome_planilha in wb.sheetnames:
@@ -101,9 +121,11 @@ class ExcelProcessor:
                         wb.close()
                     except Exception as e:
                         self.logger.log('error', f"Erro ao processar {arquivo}: {str(e)}")
+                
                 else:
+                    self.logger.log('info', f'Coletando nome e caminho do arquivo: {arquivo}')
                     resultado[arquivo] = str(caminho)
-                    
+        
         except Exception as e:
             self.logger.log('error', f"Erro ao escanear diretório: {str(e)}")
             
@@ -165,18 +187,28 @@ class FileManager:
         normalized_names = []
         
         for file in path.glob(f'*.{extension}'):
-            new_name = self.normalize_text(file.name)
+            self.logger.log('debug', f'Avaliando arquivo: {file} \n')
+            new_name = self.normalize_text(file.name).replace(extension.upper(), extension.lower())
+            self.logger.log('debug', f'Novo nome {file.name} normalizado: {new_name} \n')
             new_path = file.parent / new_name
-            
+            self.logger.log('debug', f'Novo caminho para o nome: {new_path} \n\n')
             if file != new_path:
+                self.logger.log('debug', f'Novo caminho é diferente do antigo: {new_path} / {file}\n')
                 try:
                     file.rename(new_path)
-                    self.logger.log('info', f'Arquivo renomeado: {file} -> {new_path}')
+                    self.logger.log('debug', f'Arquivo renomeado: {file} -> {new_path}')
+                except Exception as e:
+                    self.logger.log('error', f'Erro ao renomear {file}: {str(e)}')
+            elif file.name != new_name:
+                self.logger.log('debug', f'Novo nome é diferente do antigo: {new_name} / {file.name}\n')
+                try:
+                    file.rename(new_path)
+                    self.logger.log('debug', f'Arquivo renomeado: {file} -> {new_path}')
                 except Exception as e:
                     self.logger.log('error', f'Erro ao renomear {file}: {str(e)}')
                     
             normalized_names.append(new_name)
-            
+        self.logger.log('info', f'Nomes normalizados: {str(normalized_names).replace('[','').replace(']','').replace("'","")}')    
         return normalized_names
 
     def read_sql_secrets(self, secrets_path: str) -> tuple:
@@ -217,30 +249,44 @@ class DatabaseManager:
         self.engine = create_engine(connection_string)
         self.logger = SinapiLogger("DatabaseManager", log_level)
     
-    def create_database(self, db_name: str) -> bool:
+    @staticmethod
+    def create_database(admin_connection_string: str, db_name: str, logger=None) -> bool:
         """
-        Cria um banco de dados se não existir
-        Args:
-            db_name: Nome do banco de dados
-        Returns:
-            bool: True se criado/existente com sucesso
+            Args:
+                admin_connection_string (str): String de conexão com o banco de dados administrativo.
+                    Ex: 'postgresql+psycopg2://user:password@host:port/database'.
+                    Deve ter privilégios para criar novos bancos de dados.
+                db_name (str): Nome do banco de dados a ser criado.
+                logger (optional): Objeto logger para registrar eventos. Se não fornecido, um logger padrão será criado.
+
+            Returns:
+                bool: True se o banco de dados foi criado com sucesso ou já existia, False se ocorreu um erro inesperado.
+
+            Raises:
+                sqlalchemy.exc.ProgrammingError: Se ocorrer um erro de programação SQL durante a criação do banco de dados
+                    (ex: permissões insuficientes). A exceção é relançada após o log.
+                Exception: Se ocorrer qualquer outro erro durante o processo.
         """
-        self.logger.log('info', f"Verificando banco de dados '{db_name}'...")
+        if logger is None:
+            logger = SinapiLogger("DatabaseManager")
+        logger.log('info', f"Verificando/criando banco de dados '{db_name}' usando conexão administrativa...")
         try:
-            with self.engine.connect() as conn:
+            admin_engine = create_engine(admin_connection_string)
+            with admin_engine.connect() as conn:
                 conn.execution_options(isolation_level="AUTOCOMMIT").execute(
                     text(f"CREATE DATABASE {db_name}")
                 )
-            self.logger.log('info', f"Banco '{db_name}' criado com sucesso")
+            logger.log('info', f"Banco de dados '{db_name}' criado com sucesso.")
+            admin_engine.dispose()
             return True
         except sqlalchemy.exc.ProgrammingError as e:
             if 'already exists' in str(e):
-                self.logger.log('info', f"Banco '{db_name}' já existe")
+                logger.log('info', f"Banco de dados '{db_name}' já existe.")
                 return True
-            self.logger.log('error', f"Erro ao criar banco '{db_name}': {e}")
+            logger.log('error', f"Erro ao criar banco de dados '{db_name}': {e}")
             raise
         except Exception as e:
-            self.logger.log('error', f"Erro inesperado: {e}")
+            logger.log('error', f"Erro inesperado ao criar banco de dados '{db_name}': {e}")
             return False
 
     def create_schemas(self, schemas: List[str]) -> None:
@@ -361,6 +407,82 @@ class DatabaseManager:
             params: Parâmetros da query
         Returns:
             DataFrame: Resultados da query
+
+        ##Exemplos de Uso:
+        ### Consulta para selecionar todos os clientes
+            query = "SELECT * FROM clientes"
+            df_clientes = db.execute_query(query)
+        
+        ### Consulta com parâmetros
+        #### Consulta com filtro por parâmetro
+            query = "SELECT * FROM produtos WHERE categoria = :categoria"
+            params = {"categoria": "eletrônicos"}
+            df_produtos = db.execute_query(query, params)
+
+
+        ### Consulta com JOIN
+        #### Consulta combinando tabelas
+            query = '''
+                SELECT p.nome, p.preco, c.nome as categoria 
+                FROM produtos p
+                JOIN categorias c ON p.categoria_id = c.id
+                WHERE p.preco > :preco_minimo
+            '''
+            params = {"preco_minimo": 100.00}
+            df_produtos_caros = db.execute_query(query, params)
+        
+        #### Consulta de agregação
+
+        ##### Consulta com funções de agregação
+            
+            query = '''
+                SELECT 
+                    cidade, 
+                    COUNT(*) as total_clientes,
+                    AVG(renda) as renda_media
+                FROM clientes
+                GROUP BY cidade
+                HAVING COUNT(*) > :min_clientes
+            '''
+            params = {"min_clientes": 10}
+            df_estatisticas = db.execute_query(query, params)
+
+        ### Consulta com ordenação e limite
+
+        ### Consulta para os 10 produtos mais vendidos
+            
+            query = '''
+                SELECT produto_id, SUM(quantidade) as total_vendido
+                FROM vendas
+                WHERE data_venda BETWEEN :inicio AND :fim
+                GROUP BY produto_id
+                ORDER BY total_vendido DESC
+                LIMIT 10
+            '''
+            params = {
+                "inicio": "2023-01-01",
+                "fim": "2023-12-31"
+            }
+            df_top_produtos = db.execute_query(query, params)
+
+
+        ### Consulta com subquery
+        
+        #### Consulta com subquery para encontrar clientes que fizeram compras acima da média
+            
+            query = '''
+                SELECT nome, email
+                FROM clientes
+                WHERE id IN (
+                    SELECT cliente_id
+                    FROM pedidos
+                    WHERE valor > (SELECT AVG(valor) FROM pedidos)
+                )
+            '''
+            df_clientes_premium = db.execute_query(query)
+
+        Em todos os exemplos, a função retorna um DataFrame do pandas que pode ser manipulado
+        posteriormente.Os parâmetros são passados de forma segura para evitar SQL injection.
         """
         try:
             with self.engine.connect() as conn:
@@ -799,7 +921,6 @@ class SinapiDownloader:
 
         return False  # Retorna False se todas as tentativas falharem
 
-
 class SinapiProcessor:
     """Classe para processamento específico das planilhas SINAPI"""
     
@@ -842,10 +963,7 @@ class SinapiProcessor:
         except Exception as e:
             self.logger.log('error', f'Erro ao processar planilha: {str(e)}')
             raise
-        
-    #final
-        
-    
+            
     def identify_sheet_type(self, sheet_name: str, table_names: List[str] = None) -> Dict[str, int]:
         """
         Identifica o tipo de planilha SINAPI e retorna suas configurações
@@ -886,7 +1004,7 @@ class SinapiProcessor:
                         return {'split_id': 4, 'header_id': 5}
         
         self.logger.log('warning', f'Tipo de planilha não identificado: {sheet_name}')
-        return {'split_id': 0, 'header_id': 0}
+        return None
     
     def validate_data(self, df: pd.DataFrame, expected_columns: List[str] = None) -> bool:
         """
@@ -959,16 +1077,20 @@ class SinapiProcessor:
             raise
 
 
-
 #Funções Auxiliares
 
-def create_db_manager(secrets_path: str, log_level: str = 'info') -> DatabaseManager:
+logger = SinapiLogger("test_connection")
+
+def create_db_manager(secrets_path: str, log_level: str = 'info',output: str = None) -> DatabaseManager:
     """
     Cria e retorna um DatabaseManager configurado a partir de arquivo de secrets
     
     Args:
         secrets_path: Caminho completo para o arquivo .secrets
         log_level: Nível de log desejado
+        output:  Tipo de saída desejada:
+            test: dbtest
+            target: dbtarget
         
     Returns:
         Instância configurada de DatabaseManager
@@ -978,48 +1100,108 @@ def create_db_manager(secrets_path: str, log_level: str = 'info') -> DatabaseMan
         ConnectionError: Quando falha teste de conexão
         ValueError: Quando credenciais incompletas
     """
+    logger = SinapiLogger("create_db_manager", log_level)
+
     # Validação inicial do arquivo
+    logger.log('info', f"Iniciando criação do DatabaseManager com arquivo de secrets: {secrets_path}")
     if not os.path.isfile(secrets_path):
+        logger.log('error', f"Arquivo de secrets não encontrado: {secrets_path}")
         raise FileNotFoundError(f"Arquivo de secrets não encontrado: {secrets_path}")
     
     # Leitura das credenciais
     try:
+        logger.log('debug', f"Lendo credenciais do arquivo: {secrets_path}")
         with open(secrets_path, 'r') as f:
             content = f.read()
         credentials = parse_secrets(content)
+        logger.log('debug', "Credenciais lidas com sucesso.")
     except Exception as e:
+        logger.log('critical', f"Falha na leitura do arquivo secrets: {e}")
         raise RuntimeError(f"Falha na leitura do arquivo secrets: {e}") from e
 
     # Validação mínima das credenciais
     required_keys = {'DB_USER', 'DB_PASSWORD', 'DB_HOST', 'DB_PORT', 'DB_NAME'}
     if not required_keys.issubset(credentials):
         missing = required_keys - set(credentials.keys())
+        logger.log('error', f"Credenciais incompletas. Faltando: {', '.join(missing)}")
         raise ValueError(f"Credenciais incompletas. Faltando: {', '.join(missing)}")
 
     # Teste de conexão com banco inicial
-    test_connection(
-        user=credentials['DB_USER'],
-        password=credentials['DB_PASSWORD'],
-        host=credentials['DB_HOST'],
-        port=credentials['DB_PORT'],
-        database=credentials.get('DB_INITIAL_DB', 'postgres')
-    )
-
-    # Criação da connection string definitiva
-    target_db = credentials['DB_NAME']
-    conn_str = format_connection_string(
-        user=credentials['DB_USER'],
-        password=credentials['DB_PASSWORD'],
-        host=credentials['DB_HOST'],
-        port=credentials['DB_PORT'],
-        database=target_db
-    )
+    user=credentials['DB_USER']
+    pwd=credentials['DB_PASSWORD']
+    host=credentials['DB_HOST']
+    port=credentials['DB_PORT']
+    initial_db=credentials.get('DB_INITIAL_DB', 'postgres') # Definir a base a ser utilizada
+    test_conn_str = f"postgresql://{user}:{pwd}@{host}:{port}/{initial_db}"
+    
+    try:
+        logger.log('info', f"Testando conexão com banco inicial: {host}:{port}/{initial_db}")
+        test_connection(test_conn_str)
+        logger.log('info', f"Teste de conexão com banco inicial ({initial_db}) bem-sucedido.\n")
+    except Exception as e:
+        logger.log('critical', f"Falha no teste de conexão com banco inicial: {e}")
+        raise ConnectionError(f"Falha na conexão com banco inicial: {e}") from e
+    
+    #verifica qual o tipo de saída desejada:
+    if output == 'test':
+        target_db = credentials['DB_INITIAL_DB']
+    elif output == 'target':
+        target_db = credentials['DB_NAME']
+    elif output == None:
+        target_db = 'postgres'
+    else:
+        logger.log('error', f"Tipo de saída inválido: {output}")
+        raise ValueError(f"Tipo de saída inválido: {output}")
+    
+    try:
+        conn_str = format_connection_string(
+            user=credentials['DB_USER'],
+            password=credentials['DB_PASSWORD'],
+            host=credentials['DB_HOST'],
+            port=credentials['DB_PORT'],
+            database=target_db
+        )
+        test_connection(conn_str)
+    except Exception as e:
+        logger.log('warning', f"Falha ao conectar ao banco de dados '{target_db}': {e}")
+        
+        # Tenta criar o banco de dados se a conexão falhar
+        admin_conn_str = format_connection_string(
+            user=credentials['DB_USER'],
+            password=credentials['DB_PASSWORD'],
+            host=credentials['DB_HOST'],
+            port=credentials['DB_PORT'],
+            database=initial_db  # Usa o banco de dados inicial para criar o novo
+        )
+        
+        try:
+            logger.log('info', f"Tentando criar o banco de dados '{target_db}'...")
+            DatabaseManager.create_database(admin_conn_str, target_db, logger)
+            logger.log('info', f"Banco de dados '{target_db}' criado com sucesso.")
+            
+            # Recria a string de conexão após a criação do banco
+            conn_str = format_connection_string(
+                user=credentials['DB_USER'],
+                password=credentials['DB_PASSWORD'],
+                host=credentials['DB_HOST'],
+                port=credentials['DB_PORT'],
+                database=target_db
+            )
+            test_connection(conn_str)
+            
+        except Exception as create_err:
+            logger.log('critical', f"Falha ao criar o banco de dados '{target_db}': {create_err}")
+            raise
 
     # Cria e retorna o DatabaseManager
-    return DatabaseManager(
+    logger.log('info', f"Criando DatabaseManager com conexão: {host}:{port}/{target_db}")
+    db_manager = DatabaseManager(
         connection_string=conn_str,
         log_level=log_level
     )
+    
+    logger.log('info', f"DatabaseManager criado com sucesso. ({conn_str})\n")
+    return db_manager
 
 def format_connection_string(user: str, password: str, host: str, port: str, database: str) -> str:
     """Formata a string de conexão de forma segura (usa SQLAlchemy URL para evitar injeção)"""
@@ -1033,17 +1215,23 @@ def format_connection_string(user: str, password: str, host: str, port: str, dat
     ).render_as_string(hide_password=False)
 
 def test_connection(conn_str: str, timeout: int = 5, retries: int = 3):
-    """Testa conexão com retentativas automáticas (ÚNICA VERSÃO)"""
+    """Testa conexão com retentativas automáticas"""
+    logger.log('info', f"Testando conexão com timeout={timeout}s e {retries} retentativas.")
     for attempt in range(retries):
         try:
+            logger.log('debug', f"Tentativa de conexão {attempt + 1}/{retries}...")
             engine = create_engine(conn_str, connect_args={'connect_timeout': timeout})
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
+            logger.log('info', "Conexão bem-sucedida!")
             return
         except Exception as e:
+            logger.log('warning', f"Falha na tentativa {attempt + 1}: {e}")
             if attempt < retries - 1:
                 sleep(2 ** attempt)  # Backoff exponencial
+                logger.log('debug', f"Aguardando {2 ** attempt} segundos antes da próxima tentativa...")
             else:
+                logger.log('error', f"Falha na conexão após {retries} tentativas.")
                 raise ConnectionError(f"Falha na conexão após {retries} tentativas: {e}")
             
 def parse_secrets(content: str) -> dict:
@@ -1055,3 +1243,7 @@ def parse_secrets(content: str) -> dict:
             key, value = match.groups()
             credentials[key] = value
     return credentials
+
+def make_conn_str(info: dict, dbname: str = None):
+    """Gera uma connection string a partir do dicionário de informações e nome do banco."""
+    return f"postgresql://{info['user']}:{info['password']}@{info['host']}:{info['port']}/{dbname or info['dbname']}"
