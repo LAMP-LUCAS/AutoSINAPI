@@ -943,9 +943,11 @@ class SinapiProcessor:
         self.logger.log('info', f'Processando planilha {sheet_name} do arquivo {file_path}')
         try:            
             df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_id)
+            #self.logger.log('info', f'{df.head()}')
             
             # Normaliza nomes das colunas
             df.columns = [self.file_manager.normalize_text(col) for col in df.columns]
+            #self.logger.log('info', f'Colunas: {list(df.columns)}')
             
             # Se necessário fazer melt (unpivot)
             if split_id > 0:
@@ -957,7 +959,7 @@ class SinapiProcessor:
                     var_name='ESTADO',
                     value_name='COEFICIENTE'
                     )
-                
+                #self.logger.log('info', f'{df.head()}')
             return df
             
         except Exception as e:

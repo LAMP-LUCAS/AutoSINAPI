@@ -283,12 +283,14 @@ def main():
         print(f'Total de match_data_type: {len(match_data_type)}:\n {match_data_type}')
         
         #processando dados, validando e entregando o dataframe filtrado
-        for sheet in match_data_type.items():
-            #print(f'sheet: {sheet} / items: {match_data_type.items()}')
+        for sheet in match_data_type.items(): #renomear as "planilhas/sheets" para workbooks acima, assim não confunde
             sheet_name = sheet[0]
             sheet_type = sheet[1]
-            df = sinapiProcessor.process_excel(file_path,sheet_name,sheet_type['header_id'],sheet_type['split_id'])
-            print(df.header())
+            #print(f'file_path: {file_path} / sheet_name: {sheet_name} / sheet_type: {sheet_type}')
+            
+            df = sinapiProcessor.process_excel(f'{file_path}{planilha_name}',sheet_name,sheet_type['header_id'],sheet_type['split_id'])
+            print(f'\n\nDATAFRAME DA PLANILHA: {planilha_name}/{sheet_name}:\n\n{df.head()}\n\n')
+        return
 
             
         
