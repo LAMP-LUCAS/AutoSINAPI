@@ -64,7 +64,7 @@ class ExcelProcessor:
     def __init__(self):
         self.logger = SinapiLogger("ExcelProcessor")
     
-    def scan_directory(self, diretorio: str = None, formato: str = 'xlsx', data: bool = False,sheet: dict=None) -> Dict:
+    def scan_directory(self, diretorio: str = None, formato: str = 'xlsx', data: bool = False,sheet: dict=None,refuse_List: list = None) -> Dict:
         """
         Escaneia um diretório em busca de arquivos Excel
         Args:
@@ -81,6 +81,9 @@ class ExcelProcessor:
         
         self.logger.log('info', f'Escaneando o diretório: {diretorio}')
         resultado = {}
+
+        if refuse_List is None:
+            refuse_List = ['Analítico com Custo','ANALITICO_COM_CUSTO']
         
         try:
             for arquivo in os.listdir(diretorio):
@@ -93,34 +96,42 @@ class ExcelProcessor:
                 if data and sheet:
                     if data and isinstance(sheet, dict) and arquivo in list(sheet.keys()):
                         for sheetName in list(sheet.keys()):
+                            if sheetName  in refuse_List:
+                                continue
+                            else:
+                                try:
+                                    self.logger.log('info', f'      Processando: {arquivo}')
+                                    wb = load_workbook(caminho, read_only=True)
+                                    planilhas_info = []
+                                    for nome_planilha in wb.sheetnames:
+                                        if nome_planilha in refuse_List:
+                                            continue
+                                        else:
+                                            ws = wb[nome_planilha]
+                                            dados = self.get_sheet_data(ws)
+                                            planilhas_info.append((nome_planilha, dados))
+                                    resultado[arquivo] = planilhas_info
+                                    wb.close()
+                                
+                                except Exception as e:
+                                    self.logger.log('error', f'Erro ao processar {arquivo} no caminho "{sheet}" : {str(e)}\n   {list(sheet.keys())}')
+                    
+                elif data and not sheet:
+                        try:
                             self.logger.log('info', f'      Processando {arquivo}')
-                            try:
-                                self.logger.log('info', f'      Processando {arquivo}')
-                                wb = load_workbook(caminho, read_only=True)
-                                planilhas_info = []
-                                for nome_planilha in wb.sheetnames:
+                            wb = load_workbook(caminho, read_only=True)
+                            planilhas_info = []
+                            for nome_planilha in wb.sheetnames:
+                                if nome_planilha in refuse_List:
+                                    continue
+                                else:
                                     ws = wb[nome_planilha]
                                     dados = self.get_sheet_data(ws)
                                     planilhas_info.append((nome_planilha, dados))
-                                resultado[arquivo] = planilhas_info
-                                wb.close()
-                                
-                            except Exception as e:
-                                self.logger.log('error', f'Erro ao processar {arquivo} no caminho "{path}" : {str(e)}\n   {list(sheet.keys())}')
-                
-                elif data and not sheet:
-                    try:
-                        self.logger.log('info', f'      Processando {arquivo}')
-                        wb = load_workbook(caminho, read_only=True)
-                        planilhas_info = []
-                        for nome_planilha in wb.sheetnames:
-                            ws = wb[nome_planilha]
-                            dados = self.get_sheet_data(ws)
-                            planilhas_info.append((nome_planilha, dados))
-                        resultado[arquivo] = planilhas_info
-                        wb.close()
-                    except Exception as e:
-                        self.logger.log('error', f"Erro ao processar {arquivo}: {str(e)}")
+                            resultado[arquivo] = planilhas_info
+                            wb.close()
+                        except Exception as e:
+                            self.logger.log('error', f"Erro ao processar {arquivo}: {str(e)}")
                 
                 else:
                     self.logger.log('info', f'Coletando nome e caminho do arquivo: {arquivo}')
@@ -990,7 +1001,7 @@ class SinapiProcessor:
         # Verifica correspondências diretas
         for type_name, config in configs.items():
             if type_name in sheet_name:
-                self.logger.log('info', f'Planilha identificada como {type_name}')
+                self.logger.log('info', f'Planilha {sheet_name} identificada como {type_name}')
                 return config
         
         # Verifica correspondências com table_names se fornecido
@@ -1068,10 +1079,17 @@ class SinapiProcessor:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             
             # Remove caracteres especiais de colunas específicas
-            cod_columns = [col for col in df.columns if 'COD' in col]
+            cod_columns = [col for col in df.columns if 'CODIGO' in col]
             for col in cod_columns:
+                print('coluna código encontrada')
                 df[col] = df[col].astype(str).str.replace(r'[^0-9]', '', regex=True)
-            
+
+            desc_columns = [col for col in df.columns if 'DESCRICAO' in col]
+            for col in desc_columns:
+                print('coluna descrição encontrada')
+                df[col] = df[col].astype(str).str.replace('  ',' ', regex=True).apply(lambda x: f"'{self.file_manager.normalize_text(x)}'" if x else x).replace('_',' ', regex=True)
+                #df[col] = df[col].astype(str).str.replace('_',' ', regex=True)
+
             return df
             
         except Exception as e:

@@ -2,6 +2,8 @@
 import os
 import sys
 import pandas as pd
+import logging
+from datetime import datetime
 import sinapi_utils as sinapi
 from sinapi_utils import make_conn_str,create_db_manager
 
@@ -250,19 +252,11 @@ def main():
 
     file_path = planilha.split(planilha_name)[0]
     file_path = file_path.replace('\\', '/')
-    #print(f'\nNormalizando arquivos "{str(list(resultado.keys())).replace("'", "").replace("[", "").replace("]", "").replace(",", ", ")}" do diretório :{file_path}\n\n')
     sinapiFileManager.normalize_files(file_path, extension='xlsx')
 
-    #escanear e localizar e extrair as tabelas da planilha escolhida --- normalizar nomes e caminhos dos arquivos
+    #escanear e localizar e extrair as tabelas da planilha escolhida
     sheet = {planilha_name : file_path}
-
-    #sinapiFileManager.normalize_text(planilha_name)
-    print(f'\n\n    file_path: {file_path}\n    formato: {formato}\n    Planilha_name: {planilha_name}\n    Sheet: {sheet}\n\n\n')
     workbook = sinapiExcel.scan_directory(diretorio=file_path,formato=formato.upper(),data=True,sheet=sheet)
-    print(f"\n    Planilhas disponíveis no arquivo: {list(workbook.keys())}\n\n{workbook}\n\n")
-
-    #tableNames = ('COEFICIENTES', 'MANUTENCOES', 'SEM_DESONERACAO', 'ANALITICO', 'PRECOS')
-    #print(f"TableNames: {tableNames}\n")
 
     for sheet in list(workbook.keys()):
         sheet_type = str(sheet).split('SINAPI_')[-1].split(f'_{ano}_{mes}.')[0]
@@ -280,43 +274,25 @@ def main():
             if sheet_data_type is not None:
                 match_data_type[sheet_name[0]]=sheet_data_type
 
-        print(f'Total de match_data_type: {len(match_data_type)}:\n {match_data_type}')
+        print(f'Total match_data_type: {len(match_data_type)}:')
         
+        # TRATAMENTO DOS DADOS DATAFRAME PARA INSERSÃO NAS TABELAS CORRETAS
         #processando dados, validando e entregando o dataframe filtrado
+        df_list = {}
         for sheet in match_data_type.items(): #renomear as "planilhas/sheets" para workbooks acima, assim não confunde
             sheet_name = sheet[0]
-            sheet_type = sheet[1]
+            sheet_slice = sheet[1]
             #print(f'file_path: {file_path} / sheet_name: {sheet_name} / sheet_type: {sheet_type}')
             
-            df = sinapiProcessor.process_excel(f'{file_path}{planilha_name}',sheet_name,sheet_type['header_id'],sheet_type['split_id'])
-            print(f'\n\nDATAFRAME DA PLANILHA: {planilha_name}/{sheet_name}:\n\n{df.head()}\n\n')
-        return
-
-            
-        
-        
-        # normalized_sheet = sinapiFileManager.normalize_text(sheet.upper())
-        # print(f'    Planilha: {normalized_sheet}')
-        
-        # if isinstance(matched_sheet, list):
-        #     tableReferenciaName = ['ISD','CSD','ANALITICO']
-
-        # # Se for lista, verificar se todos os itens de tableNames estão na sheet
-        # if all(item in normalized_sheet for item in tableReferenciaName):
-        #     matched_sheet.append(sheet)
-        #     print(f'        Todas as tabelas {tableReferenciaName} encontradas em: {sheet}')
-        # else:
-        #     # Caso contrário, procurar por cada tabela individualmente
-        #     for table in tableNames:
-        #         if table in normalized_sheet:
-        #             matched_sheet = sheet
-        #             print(f'        Planilha encontrada: {sheet} / {table} - matched_sheet = {matched_sheet}')
-        #             break
-        # if matched_sheet:
-        #     break
-
-    return
-
+            df = sinapiProcessor.process_excel(f'{file_path}{planilha_name}',sheet_name,sheet_slice['header_id'],sheet_slice['split_id'])
+            table_name = sinapiFileManager.normalize_text(f'{sheet_type}_{sheet_name}')            
+            df_list[table_name]=sinapiProcessor.clean_data(df)
+            print(f'\n\nDATAFRAME DA PLANILHA: {table_name}:\n\n{df_list[table_name].head()}\n\n')
+    
+    
+    print(f'total de dataframes coletados: {len(df_list)}')
+    
+    
     table_configs = {
     'ISD': {
         'split_id': 5,
@@ -350,45 +326,97 @@ def main():
     }
     }
 
-    # Para a primeira condição (quando tableReferenciaName existe)
-    if tableReferenciaName:
-        for i, table in enumerate(tableReferenciaName):
-            table_norm = normalize_text(table)
-            if table_norm in table_configs:
-                config = table_configs[table_norm]
-                split_id = config['split_id']
-                header_id = config['header_id']
-            else:
-                # Configuração padrão se a tabela não for encontrada
-                config = table_configs['default']
-                split_id = config['split_id']
-                header_id = config['header_id']
-    # Para a segunda condição (quando tableReferenciaName não existe)
-    else:
-        try:
-            for idx, table_name in enumerate(tableNames):
-                if table_name in normalize_text(matched_sheet):
-                    config = table_configs['tableNames_mapping'][idx]
-                    split_id = config['split_id']
-                    header_id = config['header_id']
-                    break
-            else:
-                # Configuração padrão se nenhuma correspondência for encontrada
-                config = table_configs['default']
-                split_id = config['split_id']
-                header_id = config['header_id']
-        except Exception as e:
-            print(f'Filtro de colunas não encontrado - {e}')
-            exit()
-
-    # TRATAMENTO DOS DADOS DATAFRAME PARA INSERSÃO NAS TABELAS CORRETAS
-
     # VERIFICAÇÃO DOS DADOS EXISTENTES NO BANCO DE DADOS COM OS DO DATAFRAME E CONDICIONAL SOBRE A DUPLICIDADE, AGREGAÇÃO OU DECLÍNIO DA INSERSÃO DOS DADOS COLETADOS
+    for table_name, df in df_list.items():
+        full_table_name = f"sinapi.{table_name}"
+        if db_manager.table_exists('sinapi', table_name):
+            # Obter colunas que podem ser chaves únicas
+            cod_columns = [col for col in df.columns if 'COD' in col]
+            key_columns = cod_columns + ['ANO_REFERENCIA', 'MES_REFERENCIA'] if cod_columns else []
+            
+            if key_columns:
+                # Consultar registros existentes
+                conditions = " AND ".join([f"{col} IN :{col}_vals" for col in key_columns])
+                query = f"SELECT {', '.join(key_columns)} FROM {full_table_name} WHERE {conditions}"
+                
+                params = {}
+                for col in key_columns:
+                    params[f"{col}_vals"] = tuple(df[col].unique())
+                
+                existing_df = db_manager.execute_query(query, params)
+                
+                if not existing_df.empty:
+                    # Criar chave composta para comparação
+                    df['temp_key'] = df[key_columns].apply(lambda row: '_'.join(row.astype(str)), axis=1)
+                    existing_df['temp_key'] = existing_df[key_columns].apply(lambda row: '_'.join(row.astype(str)), axis=1)
+                    
+                    # Marcar duplicatas
+                    df['is_duplicate'] = df['temp_key'].isin(existing_df['temp_key'])
+                    duplicates_count = df['is_duplicate'].sum()
+                    
+                    print(f"\n\nPara a tabela {table_name}:")
+                    print(f"Total de registros: {len(df)}")
+                    print(f"Registros duplicados: {duplicates_count}")
+                    choice = input("Como deseja proceder? (S=Substituir, A=Agregar, P=Pular): ").upper()
+                    
+                    if choice == 'S':
+                        # Deletar duplicatas existentes
+                        delete_query = f"DELETE FROM {full_table_name} WHERE {conditions}"
+                        db_manager.execute_query(delete_query, params)
+                        df_to_insert = df
+                    elif choice == 'A':
+                        df_to_insert = df[~df['is_duplicate']]
+                    else:
+                        print("Inserção pulada.")
+                        continue
+                else:
+                    df_to_insert = df
+            else:
+                df_to_insert = df
+        else:
+            # Criar tabela se não existir
+            col_defs = []
+            for col_name, dtype in df.dtypes.items():
+                if 'int' in str(dtype):
+                    sql_type = "BIGINT"
+                elif 'float' in str(dtype):
+                    sql_type = "NUMERIC(15,2)"
+                else:
+                    sql_type = "TEXT"
+                col_defs.append(f"{col_name} {sql_type}")
+            
+            create_ddl = f"CREATE TABLE {full_table_name} ({', '.join(col_defs)})"
+            db_manager.execute_query(create_ddl)
+            df_to_insert = df
+
+        # Inserir dados
+        if not df_to_insert.empty:
+            db_manager.insert_data('sinapi', table_name, df_to_insert)
+        else:
+            print(f"Nenhum dado novo para inserir em {table_name}")
+
 
     # FINALIZAÇÃO COM A EXPORTAÇÃO "BYPASS" DOS DADOS INSERIDOS NAS TABELAS EM FORMATO CSV NO DIRETÓRIO DA BASE
+    for table_name, df in df_list.items():
+        csv_filename = f"{table_name}_{ano}_{mes}.csv"
+        csv_path = os.path.join(diretorio_referencia, csv_filename)
+        df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+        print(f"DataFrame exportado para: {csv_path}")
 
     # EXPORTAÇÃO DO LOG TOTAL DO SCRIPT
-
+    log_file_path = os.path.join(diretorio_referencia, f"autosinapi_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+    with open(log_file_path, 'w') as log_file:
+        # Capturar todo o histórico do logger
+        for handler in sinapiLogger.logger.handlers:
+            if isinstance(handler, logging.FileHandler):
+                handler.flush()
+        
+        # Se não havia FileHandler, capturar do stdout
+        if not any(isinstance(h, logging.FileHandler) for h in sinapiLogger.logger.handlers):
+            log_content = "\n".join([log_entry.getMessage() for log_entry in sinapiLogger.logger.handlers[0].buffer])
+            log_file.write(log_content)
+        
+    print(f"Log completo exportado para: {log_file_path}")
 
 if __name__ == "__main__":
     prog = False
