@@ -328,7 +328,17 @@ def main():
 
     # VERIFICAÇÃO DOS DADOS EXISTENTES NO BANCO DE DADOS COM OS DO DATAFRAME E CONDICIONAL SOBRE A DUPLICIDADE, AGREGAÇÃO OU DECLÍNIO DA INSERSÃO DOS DADOS COLETADOS
     for table_name, df in df_list.items():
-        full_table_name = f"sinapi.{table_name}"
+
+        full_table_name = f"sinapi.{table_name}" #fazer um filtro do nome da tabela e o nome da database
+
+        try:
+            #tentando criar a tabela:            
+            db_manager.create_table(db_manager, full_table_name,list(df.columns),)
+        except Exception as e:
+            print(f'Erro: {e}')
+
+
+
         if db_manager.table_exists('sinapi', table_name):
             # Obter colunas que podem ser chaves únicas
             cod_columns = [col for col in df.columns if 'COD' in col]

@@ -385,6 +385,82 @@ class DatabaseManager:
         total_time = timedelta(seconds=int(time.time() - start_time))
         self.logger.log('info', f"Inserção concluída em {total_time}")
 
+    def validate_data(self, full_table_name: str, df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """
+        Verifica se os dados existem no banco de dados e gerencia conflitos de duplicatas
+        Retorna o DataFrame preparado para inserção ou None se a operação for cancelada
+        """
+        schema_name, table_name = full_table_name.split('.')
+        
+        if self.table_exists(schema_name, table_name):
+            # Obter colunas que podem ser chaves únicas
+            cod_columns = [col for col in df.columns if 'COD' in col]
+            key_columns = cod_columns + ['ANO_REFERENCIA', 'MES_REFERENCIA'] if cod_columns else []
+            
+            if key_columns:
+                # Consultar registros existentes
+                conditions = " AND ".join([f"{col} IN :{col}_vals" for col in key_columns])
+                query = f"SELECT {', '.join(key_columns)} FROM {full_table_name} WHERE {conditions}"
+                
+                params = {}
+                for col in key_columns:
+                    params[f"{col}_vals"] = tuple(df[col].dropna().unique())
+                
+                existing_df = self.execute_query(query, params)
+                
+                if not existing_df.empty:
+                    # Criar chave composta para comparação
+                    df['temp_key'] = df[key_columns].apply(lambda row: '_'.join(row.astype(str)), axis=1)
+                    existing_df['temp_key'] = existing_df[key_columns].apply(lambda row: '_'.join(row.astype(str)), axis=1)
+                    
+                    # Marcar duplicatas
+                    df['is_duplicate'] = df['temp_key'].isin(existing_df['temp_key'])
+                    duplicates_count = df['is_duplicate'].sum()
+                    
+                    self.logger.log('info', f"\nPara a tabela {table_name}:")
+                    self.logger.log('info', f"Total de registros: {len(df)}")
+                    self.logger.log('info', f"Registros duplicados: {duplicates_count}")
+                    
+                    choice = input("Como deseja proceder? (S=Substituir, A=Agregar, P=Pular): ").upper()
+                    
+                    if choice == 'S':
+                        # Deletar duplicatas existentes
+                        delete_query = f"DELETE FROM {full_table_name} WHERE {conditions}"
+                        self.execute_query(delete_query, params)
+                        df_to_insert = df.drop(columns=['temp_key', 'is_duplicate'])
+                    elif choice == 'A':
+                        df_to_insert = df[~df['is_duplicate']].drop(columns=['temp_key', 'is_duplicate'])
+                    else:
+                        self.logger.log('info', "Inserção pulada.")
+                        return None
+                else:
+                    df_to_insert = df
+            else:
+                df_to_insert = df
+            
+            return df_to_insert
+        
+        else:
+            # Criar tabela com tipos inferidos do DataFrame
+            col_defs = []
+            for col_name, dtype in df.dtypes.items():
+                if 'int' in str(dtype):
+                    sql_type = "BIGINT"
+                elif 'float' in str(dtype):
+                    sql_type = "NUMERIC(15,2)"
+                else:
+                    sql_type = "TEXT"
+                col_defs.append(f"{col_name} {sql_type}")
+            
+            create_ddl = f"CREATE TABLE {full_table_name} ({', '.join(col_defs)})"
+            self.execute_query(create_ddl)
+            self.logger.log('info', f"Tabela {full_table_name} criada com sucesso.")
+            return df
+
+
+
+
+
     def _insert_batch(self, conn: sqlalchemy.engine.Connection, table_name: str, 
                      batch_df: pd.DataFrame) -> None:
         """
