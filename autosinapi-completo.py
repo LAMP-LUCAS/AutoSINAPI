@@ -146,6 +146,7 @@ def main():
     except Exception as e:
         print(f'Erro ao processar o diretório {diretorio_referencia}:\n    {e}')
         #print(f'Erro ao validar o arquivo {f'SINAPI-{ano}-{mes}-formato-{formato}'} em relação a chave {chave.split('.')[0]}')
+    
     planilhas = []
     if resultado:
         planilhas = list(resultado.keys())
@@ -218,38 +219,6 @@ def main():
         print(f"ERRO INESPERADO: {e}")
         sys.exit(2)
 
-    # return
-    # VERIFICAÇÃO DAS TABELAS DO BANCO
-    # try:        
-    #     # Definir estrutura das tabelas (exemplo para composições)
-    #     tabelas = {
-    #         'composicoes': {
-    #             'colunas': [
-    #                 'id SERIAL PRIMARY KEY',
-    #                 'codigo_composicao VARCHAR(20) NOT NULL',
-    #                 'descricao TEXT',
-    #                 'unidade VARCHAR(10)',
-    #                 'valor NUMERIC(15,2)',
-    #                 'ano_referencia INT',
-    #                 'mes_referencia INT'
-    #             ]
-    #         },
-    #         # Adicionar outras tabelas conforme necessário
-    #     }
-        
-    #     # Criar tabelas se não existirem
-    #     for tabela, estrutura in tabelas.items():
-    #         if not db_manager.table_exists('sinapi', tabela):
-    #             colunas_str = ", ".join(estrutura['colunas'])
-    #             db_manager.execute_query(
-    #                 f"CREATE TABLE sinapi.{tabela} ({colunas_str})"
-    #             )
-    #             print(f"Tabela criada: sinapi.{tabela}")
-
-    # except Exception as e:
-    #     sinapiLogger.log('error', f"Erro na criação de tabelas: {e}")
-    #     sys.exit(3)
-
     file_path = planilha.split(planilha_name)[0]
     file_path = file_path.replace('\\', '/')
     sinapiFileManager.normalize_files(file_path, extension='xlsx')
@@ -289,122 +258,27 @@ def main():
             df_list[table_name]=sinapiProcessor.clean_data(df)
             print(f'\n\nDATAFRAME DA PLANILHA: {table_name}:\n\n{df_list[table_name].head()}\n\n')
     
-    
     print(f'total de dataframes coletados: {len(df_list)}')
     
-    
-    table_configs = {
-    'ISD': {
-        'split_id': 5,
-        'header_id': 9
-    },
-    'CSD': {
-        'split_id': 4,
-        'header_id': 9
-    },
-    'ANALITICO': {
-        'split_id': 0,
-        'header_id': 9
-    },
-    'tableNames_mapping': {
-        0: {  # Insumos Coeficiente
-            'split_id': 5,
-            'header_id': 5
-        },
-        1: {  # Códigos Manutenções
-            'split_id': 0,
-            'header_id': 5
-        },
-        2: {  # Mão de Obra
-            'split_id': 4,
-            'header_id': 5
-        }
-    },
-    'default': {
-        'split_id': 0,
-        'header_id': 0
-    }
-    }
-
     # VERIFICAÇÃO DOS DADOS EXISTENTES NO BANCO DE DADOS COM OS DO DATAFRAME E CONDICIONAL SOBRE A DUPLICIDADE, AGREGAÇÃO OU DECLÍNIO DA INSERSÃO DOS DADOS COLETADOS
-    for table_name, df in df_list.items():
-
-        full_table_name = f"sinapi.{table_name}" #fazer um filtro do nome da tabela e o nome da database
-
+    for table_name, df_unit in df_list.items():
+        schema_name = 'sinapi'
+        full_table_name = f"{schema_name}.{table_name}" #fazer um filtro do nome da tabela e o nome da database
+        result = db_manager.table_exists(schema_name,table_name,True) #Verifica e cria as tabelas antes de interagir com elas.
+        print(f"full_table_name: {full_table_name}\nresult: {result}")
         try:
-            #tentando criar a tabela:            
-            db_manager.create_table(db_manager, full_table_name,list(df.columns),)
+            # Validação com backup opcional
+            df_to_insert = db_manager.validate_data(
+                full_table_name=full_table_name,
+                df=df_unit,
+                backup_dir=file_path,
+                #policy='substituir'.upper()
+            )
+
+            if df_to_insert is not None:
+                db_manager.insert_data('sinapi', table_name, df_to_insert)
         except Exception as e:
-            print(f'Erro: {e}')
-
-
-
-        if db_manager.table_exists('sinapi', table_name):
-            # Obter colunas que podem ser chaves únicas
-            cod_columns = [col for col in df.columns if 'COD' in col]
-            key_columns = cod_columns + ['ANO_REFERENCIA', 'MES_REFERENCIA'] if cod_columns else []
-            
-            if key_columns:
-                # Consultar registros existentes
-                conditions = " AND ".join([f"{col} IN :{col}_vals" for col in key_columns])
-                query = f"SELECT {', '.join(key_columns)} FROM {full_table_name} WHERE {conditions}"
-                
-                params = {}
-                for col in key_columns:
-                    params[f"{col}_vals"] = tuple(df[col].unique())
-                
-                existing_df = db_manager.execute_query(query, params)
-                
-                if not existing_df.empty:
-                    # Criar chave composta para comparação
-                    df['temp_key'] = df[key_columns].apply(lambda row: '_'.join(row.astype(str)), axis=1)
-                    existing_df['temp_key'] = existing_df[key_columns].apply(lambda row: '_'.join(row.astype(str)), axis=1)
-                    
-                    # Marcar duplicatas
-                    df['is_duplicate'] = df['temp_key'].isin(existing_df['temp_key'])
-                    duplicates_count = df['is_duplicate'].sum()
-                    
-                    print(f"\n\nPara a tabela {table_name}:")
-                    print(f"Total de registros: {len(df)}")
-                    print(f"Registros duplicados: {duplicates_count}")
-                    choice = input("Como deseja proceder? (S=Substituir, A=Agregar, P=Pular): ").upper()
-                    
-                    if choice == 'S':
-                        # Deletar duplicatas existentes
-                        delete_query = f"DELETE FROM {full_table_name} WHERE {conditions}"
-                        db_manager.execute_query(delete_query, params)
-                        df_to_insert = df
-                    elif choice == 'A':
-                        df_to_insert = df[~df['is_duplicate']]
-                    else:
-                        print("Inserção pulada.")
-                        continue
-                else:
-                    df_to_insert = df
-            else:
-                df_to_insert = df
-        else:
-            # Criar tabela se não existir
-            col_defs = []
-            for col_name, dtype in df.dtypes.items():
-                if 'int' in str(dtype):
-                    sql_type = "BIGINT"
-                elif 'float' in str(dtype):
-                    sql_type = "NUMERIC(15,2)"
-                else:
-                    sql_type = "TEXT"
-                col_defs.append(f"{col_name} {sql_type}")
-            
-            create_ddl = f"CREATE TABLE {full_table_name} ({', '.join(col_defs)})"
-            db_manager.execute_query(create_ddl)
-            df_to_insert = df
-
-        # Inserir dados
-        if not df_to_insert.empty:
-            db_manager.insert_data('sinapi', table_name, df_to_insert)
-        else:
-            print(f"Nenhum dado novo para inserir em {table_name}")
-
+            print(f'Erro ao inserir dados em {full_table_name}: {e}\n')
 
     # FINALIZAÇÃO COM A EXPORTAÇÃO "BYPASS" DOS DADOS INSERIDOS NAS TABELAS EM FORMATO CSV NO DIRETÓRIO DA BASE
     for table_name, df in df_list.items():
