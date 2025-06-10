@@ -10,6 +10,7 @@ import os
 import zipfile
 import requests
 import time
+import numpy as np
 from time import sleep
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Union
@@ -211,7 +212,7 @@ class FileManager:
                     normalized_names.append(new_name)
                 except Exception as e:
                     self.logger.log('error', f'Erro ao renomear {file}: {str(e)}')
-                    
+
                 except:
                     self.logger.log('warning', f'Não foi possível renomear {file.name} para {new_name} pois um arquivo com este nome já existe.')
                     normalized_names.append(new_path.name)
@@ -375,32 +376,36 @@ class DatabaseManager:
         start_time = time.time()
         
         self.log('info', f"Inserindo {total_rows:,} registros em {table_name}...")
-        
-        with self.engine.connect() as conn:
-            with tqdm(total=total_rows, desc="Inserindo dados", unit="reg") as pbar:
-                for i in range(0, total_rows, batch_size):
-                    batch_start = time.time()
-                    batch_df = df.iloc[i:i + batch_size]
-                    
-                    try:
-                        self._insert_batch(conn, table_name, batch_df)
-                        conn.commit()
-                    except Exception as e:
-                        self.log('error', f"Erro no lote {i//batch_size + 1}: {e}")
-                        continue
-                    
-                    batch_time = time.time() - batch_start
-                    records = len(batch_df)
-                    elapsed = time.time() - start_time
-                    rate = records / batch_time if batch_time > 0 else 0
-                    
-                    pbar.update(records)
-                    pbar.set_postfix({
-                        "Tempo lote": f"{batch_time:.1f}s",
-                        "Total": f"{elapsed:.1f}s",
-                        "Reg/s": f"{rate:.0f}"
-                    })
-        
+        # ADIÇÃO: Converte todos os tipos de nulos (np.nan, pd.NA) para None, que o SQL entende como NULL.
+        df = df.replace({pd.NA: None, np.nan: None})
+        try:
+            with self.engine.connect() as conn:
+                with tqdm(total=total_rows, desc="Inserindo dados", unit="reg") as pbar:
+                    for i in range(0, total_rows, batch_size):
+                        batch_start = time.time()
+                        batch_df = df.iloc[i:i + batch_size]
+                        
+                        try:
+                            self._insert_batch(conn, table_name, batch_df)
+                            conn.commit()
+                        except Exception as e:
+                            self.log('error', f"Erro no lote {i//batch_size + 1}: {e}")
+                            continue
+                        
+                        batch_time = time.time() - batch_start
+                        records = len(batch_df)
+                        elapsed = time.time() - start_time
+                        rate = records / batch_time if batch_time > 0 else 0
+                        
+                        pbar.update(records)
+                        pbar.set_postfix({
+                            "Tempo lote": f"{batch_time:.1f}s",
+                            "Total": f"{elapsed:.1f}s",
+                            "Reg/s": f"{rate:.0f}"
+                        })
+        except Exception as e:            
+            self.log('error', f"Falha crítica durante a inserção de dados em {table_name}: {e}", exc_info=True)
+            raise
         total_time = timedelta(seconds=int(time.time() - start_time))
         self.log('info', f"Inserção concluída em {total_time}")
 
@@ -1138,7 +1143,9 @@ class SinapiProcessor:
             desc_columns = [col for col in df.columns if 'DESCRICAO' in col]
             for col in desc_columns:
                 self.logger.log('info',f'Coluna Descrição Encontrada: {col}')
-                df[col] = df[col].astype(str).str.replace('  ',' ', regex=True).apply(lambda x: f"'{self.file_manager.normalize_text(x)}'" if x else x).replace('_',' ', regex=True)
+                df[col] = df[col].astype(str).str.replace('  ',' ', regex=True).apply(
+                lambda x: self.file_manager.normalize_text(x) if x else x
+            ).str.replace('_',' ', regex=True)
                 #df[col] = df[col].astype(str).str.replace('_',' ', regex=True)
 
             return df
