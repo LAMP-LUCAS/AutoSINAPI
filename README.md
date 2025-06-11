@@ -4,7 +4,7 @@ Este repositório tem como objetivo o desenvolvimento open source de uma soluç�
 
 Se você não tem costume ou nunca utilizou código aqui do github eu pedi ao DeepSeek para fazer um guia, passo a passo aqui neste link: [GUIA]
 
-Se você nunca usou o DeepSeek ou outro LLM (Large Languange Model - Grande Modelo de Linguagem) para te ajudar desenvolver soluções do dia-a-dia de projetos e obras, te convido a entrar no grupo de estudos aqui no redmine: []()
+Se você nunca usou o DeepSeek ou outro LLM (Large Languange Model - Grande Modelo de Linguagem) para te ajudar desenvolver soluções do dia-a-dia de projetos e obras, te convido a entrar no grupo de estudos aqui no redmine: [TUTORIAL-INICIO](https://github.com/LAMP-LUCAS/AutoSINAPI/tree/postgres_data-define/docs/TUTORIAL-INICIO.md)
 
 ## Objetivos
 
