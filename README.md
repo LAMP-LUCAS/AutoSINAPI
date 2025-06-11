@@ -12,11 +12,14 @@ Este repositório tem como objetivo o desenvolvimento open source de uma soluç�
 ## Estrutura do Projeto
 
 ```plaintext
-├── sinap_webscraping.py    # Script para download dos arquivos SINAPI
-├── rastreador_xlsx.py      # Ferramenta de análise de arquivos Excel
-├── sql_sinapi_insert.py    # Script de inserção no PostgreSQL
+├── autosinapi_pipeline.py    # Script Exemplo para download, tratamento e insersão dos arquivos SINAPI no banco de dados
+├── CONFIG.json      # Arquivo de configuração para automatização do pipeline 
+├── sinap_webscraping_download_log.json      # Arquivo de registro dos downloads
+├── sql_access.secrets      # Arquivo de configuração do banco (exemplo) - Retirar ".example"
+├── sinapi_utils.py      # Módulo contendo toda lógica do projeto
 ├── update_requirements.py  # Atualizador de dependências
-├── sql_access.secrets      # Arquivo de configuração do banco (exemplo)
+├── setup.py    # Configuração do módulo
+├── pyproject.toml    # Configuração do módulo
 └── requirements.txt        # Dependências do projeto
 ```
 
@@ -39,7 +42,7 @@ python -m venv venv
 ### 3. Instale as dependências
 
 ```bash
-python update_requirements.py  # Gera requirements.txt atualizado
+python update_requirements.py  # Gera requirements.txt atualizado, OPCIONAL!
 pip install -r requirements.txt
 ```
 
@@ -57,48 +60,60 @@ DB_NAME = 'sinapi'
 DB_INITIAL_DB = 'postgres'
 ```
 
+### 5. Configure o arquivo CONFIG.json para automatização das etapas
+
+- Atualmente está configurado para tratar os dados das bases à partir de 2025, substituindo os dados antigos e utilizando o arquivo XLSX REFERENCIA para insersão:
+
+```ini
+{
+    "secrets_path": "sql_access.secrets", # arquivo com os parâmetros de conexão
+    "default_year": "2025", # ano da base desejada
+    "default_month": "01", # mês da base desejada
+    "default_format": "xlsx", # formato de arquivo a ser trabalhado (Atualmente só suporta XLSX)
+    "workbook_type_name": "REFERENCIA", # Workbook exemplo para trabalhar
+    "duplicate_policy": "substituir", # Política de insersão de dados novos
+    "backup_dir": "./backups", # Pasta para salvamento dos dados tratados antes de inserir no banco de dados
+    "log_level": "info", # Nível de LOG
+    "sheet_processors": { # Configuração de recorte de dados para cada tipo de planilha {NOME_PLANILHA: {COLUNA_RECORTE, COLUNA_CABEÇALHO}}
+        "ISD": {"split_id": 5, "header_id": 9},
+        "CSD": {"split_id": 4, "header_id": 9},
+        "ANALITICO": {"split_id": 0, "header_id": 9},
+        "COEFICIENTES": {"split_id": 5, "header_id": 5},
+        "MANUTENCOES": {"split_id": 0, "header_id": 5},
+        "MAO_DE_OBRA": {"split_id": 4, "header_id": 5}
+    }
+}
+```
+
 ## Uso dos Scripts
 
 ### 1. Download de Dados SINAPI
 
-O script `sinap_webscraping.py` automatiza o download dos arquivos do SINAPI:
+O script `autosinap_pipeline.py` realiza todas as etapas necessárias para o download dos arquivos do SINAPI e insersão no banco de dados PostgreSQL:
 
 ```bash
-python sinap_webscraping.py
+python autosinap_pipeline.py
 ```
 
-Você será solicitado a informar:
+Se não configurar o CONFIG.json Você será solicitado a informar:
 
 - Ano (YYYY)
 - Mês (MM)
 - Tipo de planilha (familias_e_coeficientes, Manutenções, mao_de_obra, Referência)
-- Formato (xlsx, pdf)
+- Formato (xlsx é o único formato suportado até o momento)
 
-### 2. Análise de Arquivos Excel
+### >> FUTURA IMPLANTAÇÃO << CLI para o scripy PostgreSQL
 
-O `rastreador_xlsx.py` analisa os arquivos Excel baixados:
-
-```bash
-python rastreador_xlsx.py
-```
-
-O script irá:
-
-- Escanear os arquivos Excel no diretório
-- Gerar relatório de células, linhas e colunas
-- Salvar logs em formatos JSON e TXT
-
-### 3. Inserção no PostgreSQL
-
-O script `sql_sinapi_insert.py` processa e insere os dados no banco:
+O script `autosinapi_cli_pipeline.py` processa e insere os dados no banco:
 
 ```bash
-python sql_sinapi_insert.py --arquivo_xlsx <caminho> --tipo_base <tipo>
+python autosinapi_cli_pipeline.py --arquivo_xlsx <caminho> --tipo_base <tipo> --config <caminho>
 ```
 
 Parâmetros disponíveis:
 
-- `--arquivo_xlsx`: Caminho do arquivo Excel
+- `--arquivo_xlsx`: Caminho do arquivo Excel a ser processado
+- `--config`: Caminho do arquivo de configuração CONFIG.json
 - `--tipo_base`: Tipo de dados (insumos, composicao, analitico)
 - `--user`: Usuário do PostgreSQL (opcional, usa .secrets se não informado)
 - `--password`: Senha do PostgreSQL (opcional, usa .secrets se não informado)
@@ -121,26 +136,29 @@ O banco PostgreSQL é organizado em schemas por tipo de dados:
 1. Erro de conexão PostgreSQL:
    - Verifique se o PostgreSQL está rodando
    - Confirme as credenciais em `sql_access.secrets`
-   - Verifique se o banco e schemas existem
+   - Verifique se o banco e schemas existem ou se foram criados corretamente pelo script `autosinapi_pipeline.py`
 
 2. Erro no download SINAPI:
    - Verifique sua conexão com a internet
    - Confirme se o arquivo existe no site da Caixa
    - Verifique o formato do ano (YYYY) e mês (MM)
+   - ATENÇÃO: Se realizadas várias tentativas a plataforma da CEF pode bloquear seu IP, utilize próxies ou aguarde um tempo antes de tentar novamente.
 
 3. Erro na análise Excel:
    - Confirme se o arquivo não está aberto em outro programa
    - Verifique se há permissão de leitura no diretório
+   - Verifique se as configurações de split e header presentes no arquivo `CONFIG.json` estão corretas
 
 ## Como contribuir
 
 1. Faça um fork deste repositório
 2. Crie uma branch para sua feature ou correção
 3. Envie um pull request detalhando as alterações propostas
+4. Beba água e se possível passe um cafezinho antes de contribuir.
 
 ## Requisitos do Sistema
 
-- Python 3.8+
+- Python 3.0+
 - PostgreSQL 12+
 - Bibliotecas Python listadas em `requirements.txt`
 
@@ -152,32 +170,29 @@ Este projeto é open source sob os termos da GNU General Public License, versão
 
 Sugestões, dúvidas ou colaborações são bem-vindas via issues ou pull requests.
 
+## Árvore de configuração do diretório
 
-.
-├── __pycache__
-│   ├── rastreador_xlsx.cpython-312.pyc
-│   ├── sinap_webscraping.cpython-312.pyc
-│   └── sinapi_utils.cpython-312.pyc
-├── autosinapi.egg-info
-│   ├── dependency_links.txt
-│   ├── PKG-INFO
-│   ├── requires.txt
-│   ├── SOURCES.txt
-│   └── top_level.txt
-├── tools
-│   ├── criando-app_2025_tratando-dados.ipynb
-│   ├── criando-app.ipynb
-│   ├── rastreador_xlsx.py
-│   ├── sinap_webscraping_download_log.json
-│   ├── sinap_webscraping.py
-│   ├── sql_access.secrets
-│   ├── sql_sinapi_insert_2024.py
-│   └── sql_sinapi_insert.py
-├── venv
-├── __init__.py
-├── .gitignore
-├── README.md
-├── requirements.txt
-├── setup.py
-├── sinapi_utils.py
-└── update_requirements.py
+📦AutoSINAPI
+ ┣ 📂autosinapi.egg-info
+ ┃ ┣ 📜dependency_links.txt
+ ┃ ┣ 📜PKG-INFO
+ ┃ ┣ 📜requires.txt
+ ┃ ┣ 📜SOURCES.txt
+ ┃ ┗ 📜top_level.txt
+ ┣ 📂docs
+ ┣ 📂tests
+ ┣ 📂tools
+ ┃ ┃ ┣ 📂downloads
+ ┃ ┣ 📜autosinapi_pipeline.py
+ ┃ ┣ 📜CONFIG.json
+ ┃ ┣ 📜sinap_webscraping_download_log.json
+ ┃ ┣ 📜sql_access copy.secrets.example
+ ┃ ┗ 📜__init__.py
+ ┣ 📜.gitignore
+ ┣ 📜pyproject.toml
+ ┣ 📜README.md
+ ┣ 📜requirements.txt
+ ┣ 📜setup.py
+ ┣ 📜sinapi_utils.py
+ ┣ 📜update_requirements.py
+ ┗ 📜__init__.py
