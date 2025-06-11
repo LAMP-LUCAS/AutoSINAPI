@@ -2,6 +2,10 @@
 
 Este repositório tem como objetivo o desenvolvimento open source de uma solução para captação, tratamento e inserção dos dados do SINAPI (Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil) em um banco de dados PostgreSQL de forma estruturada, editável e atualizável de maneira autônoma. Atualmente está realizando os seus objetivos, porém busca-se criar uma api RESTFULL para facilitar a consulta desses dados e uma integração com a API SINCRO para captar e tratar os dados SINAPI em vários fornecedores mantendo um bypass e segurança em seus consumos. Eu te convido a participar desse projeto e dos outros incluídos no foton, veja mais no repositório FOTON aqui no Github: [FOTON](https://github.com/LAMP-LUCAS/foton)
 
+Se você não tem costume ou nunca utilizou código aqui do github eu pedi ao DeepSeek para fazer um guia, passo a passo aqui neste link: [GUIA]
+
+Se você nunca usou o DeepSeek ou outro LLM (Large Languange Model - Grande Modelo de Linguagem) para te ajudar desenvolver soluções do dia-a-dia de projetos e obras, te convido a entrar no grupo de estudos aqui no redmine: []()
+
 ## Objetivos
 
 - Automatizar o download dos dados do SINAPI
