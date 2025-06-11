@@ -853,7 +853,7 @@ class SinapiDownloader:
             return None
             
         url = f'https://www.caixa.gov.br/Downloads/sinapi-relatorios-mensais/SINAPI-{ano}-{mes}-formato-{formato}.zip'
-        folder_name = f'./{ano}_{mes}'
+        folder_name = f'./downloads/{ano}_{mes}'
         
         #print('iniciando pesquisa...')
         zip_path = self._zip_pathfinder(folder_name,ano,mes,formato)
@@ -1304,7 +1304,7 @@ class SinapiPipeline:
         ano = params['ano']
         mes = params['mes']
         formato = params['formato']
-        diretorio_referencia = f"./{ano}_{mes}"
+        diretorio_referencia = f"./downloads/{ano}_{mes}"
         
         # Cria diretório se necessário
         if not os.path.exists(diretorio_referencia):

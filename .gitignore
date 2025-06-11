@@ -80,3 +80,6 @@ venv/
 # Ignora arquivos temporários do sistema operacional
 Thumbs.db
 .DS_Store
+
+# Ignora diretórios de downloads
+downloads/
