@@ -172,6 +172,7 @@ Sugestões, dúvidas ou colaborações são bem-vindas via issues ou pull reques
 
 ## Árvore de configuração do diretório
 
+```plaintext
 📦AutoSINAPI
  ┣ 📂autosinapi.egg-info
  ┃ ┣ 📜dependency_links.txt
@@ -196,3 +197,4 @@ Sugestões, dúvidas ou colaborações são bem-vindas via issues ou pull reques
  ┣ 📜sinapi_utils.py
  ┣ 📜update_requirements.py
  ┗ 📜__init__.py
+```
