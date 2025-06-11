@@ -180,10 +180,10 @@ Sugestões, dúvidas ou colaborações são bem-vindas via issues ou pull reques
  ┃ ┣ 📜requires.txt
  ┃ ┣ 📜SOURCES.txt
  ┃ ┗ 📜top_level.txt
- ┣ 📂docs
- ┣ 📂tests
- ┣ 📂tools
- ┃ ┃ ┣ 📂downloads
+ ┣ 📂docs # Documentação do projeto >> Irá ser implantado juntamente com um forum/comunidade em um redmine
+ ┣ 📂tests # Local especial para testar modificações e implantações sem quebrar todo o resto :)
+ ┣ 📂tools # Ferramentas que podem ser criadas utilizando este módulo
+ ┃ ┃ ┣ 📂downloads # local onde serão salvos os downloads do script
  ┃ ┣ 📜autosinapi_pipeline.py
  ┃ ┣ 📜CONFIG.json
  ┃ ┣ 📜sinap_webscraping_download_log.json
