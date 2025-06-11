@@ -23,7 +23,7 @@ class SinapiPipeline:
             with open(config_path, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            self.logger.log('critical', f'Erro ao carregar configuração: {e}')
+            self.logger.log('error', f'Erro ao carregar configuração: {e}')
             raise
 
     def get_parameters(self):
@@ -144,31 +144,70 @@ class SinapiPipeline:
         
         return df_list
 
-    def handle_database_operations(self, df_list):
+    def handle_database_operations(self, df_list, table_types=None):
         """Gerencia operações de banco de dados"""
+
         duplicate_policy = self.config.get('duplicate_policy', 'substituir').upper()
         backup_dir = self.config.get('backup_dir', './backups')
-        
-        for table_name, df in df_list.items():
-            full_table_name = f"sinapi.{table_name}"
-            
+
+        if table_types is None:
+            table_types = {
+                'INSUMOS': ['ISD', ],
+                'COMPOSICAO': ['CSD', ],
+                'ANALITICO': ['ANALITICO'],
+                'PRECOS': ['INSUMOS', 'COMPOSICAO'],
+            }
+
+        refuseList = []
+        table_types_name = {}
+        schema = "sinapi"
+
+        for df_name, df in df_list.items():
+            df_name_type = df_name.split('_')[-1].upper()
+            matched_type = None
+            for type_name, names in table_types.items():
+                if df_name_type.startswith(tuple(n.upper() for n in names)):
+                    table_types_name[type_name] = df_name
+                    matched_type = type_name
+                    break
+
+            if not matched_type:
+                refuseList.append(df_name)
+                self.logger.log(
+                    'info',
+                    f"Tabela {df_name.split('_')[-1]} não definida em table_types, será desconsiderada.\n"
+                    f"Lista de tabelas desconsideradas: {refuseList}"
+                )
+                continue
+
+            table_name = matched_type
+            table_name_type = f"{table_name}_{df_name_type}"
+            full_table_name = f"{schema}.{table_name_type}"
+
+            self.logger.log('info', f'lista de tabelas desconsideradas: {refuseList}')
+            self.logger.log('info', f'Lista de tabelas consideradas:\n{table_types_name}')
+            self.logger.log('info', f'Nome da tabela onde será inserido os dados:\n\n>>>>>>>>>> {table_name}\n')
+            self.logger.log('info', f'table_types_name DEFINIDO: {df_name} -> {full_table_name}\n')
+
             try:
-                # Valida e prepara dados para inserção
-                df_to_insert = self.db_manager.validate_data(
+                self.logger.log('info', f'\n\nEsquema.tabela.tipo: {full_table_name.lower()}\n')
+                df_to_insert = self.db_manager.validate_data_table(
                     full_table_name=full_table_name,
                     df=df,
                     backup_dir=backup_dir,
                     policy=duplicate_policy  # Novo parâmetro
                 )
-                
+
                 if df_to_insert is not None and not df_to_insert.empty:
-                    self.db_manager.insert_data('sinapi', table_name, df_to_insert)
+                    self.logger.log('info', f'INSERINDO DADOS DE {df_name}')
+                    self.db_manager.insert_data('sinapi', f'{table_name}_{df_name_type}', df_to_insert)
                 elif df_to_insert is not None and df_to_insert.empty:
                     self.logger.log('info', f"Nenhum dado novo para inserir na tabela {table_name} após validação.")
             except Exception as e:
-                self.logger.log('error', f'Erro crítico ao processar a tabela {full_table_name}: {e}', exc_info=True)
-                # Re-levanta a exceção para parar o pipeline, pois um erro de DB é crítico
-                raise
+                self.logger.log('error', f'Erro crítico ao processar a tabela {table_name}: {e}', exc_info=True)
+                break
+
+        return table_types_name
 
     def export_results(self, df_list, params):
         """Exporta resultados para CSV"""
@@ -200,21 +239,21 @@ class SinapiPipeline:
             
             # Passo 5: Processar planilhas
             df_list = self.process_spreadsheets(extraction_path, planilha_name)
-            
+            #self.logger.log('info', f'df_list:\n\n{df_list}\n\n')
+
             # Passo 6: Operações de banco
             if df_list:
                 self.handle_database_operations(df_list)
             else:
                 self.logger.log('warning', "Nenhuma planilha foi processada, pulando operações de banco de dados.")
 
-            # Passo 7: Exportar resultados
-            self.export_results(df_list, params)
+            # # Passo 7: Exportar resultados
+            # self.export_results(df_list, params)
             
             self.logger.log('info', 'Processo concluído com sucesso!')
             
         except Exception as e:
             self.logger.log('error', f'Erro durante o processo: {e}', exc_info=True)
-            #self.logger.log('critical', f'O pipeline falhou devido a um erro crítico: {e}', exc_info=True)
             raise
 
 if __name__ == "__main__":

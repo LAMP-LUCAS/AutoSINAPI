@@ -2,6 +2,7 @@
 Utilitários centralizados para o sistema SINAPI
 Este módulo contém todas as funções e classes comuns utilizadas pelos outros módulos do sistema.
 """
+
 import logging
 import unicodedata
 import pandas as pd
@@ -390,7 +391,8 @@ class DatabaseManager:
                             conn.commit()
                         except Exception as e:
                             self.log('error', f"Erro no lote {i//batch_size + 1}: {e}")
-                            continue
+                            #raise
+                            break
                         
                         batch_time = time.time() - batch_start
                         records = len(batch_df)
@@ -403,6 +405,7 @@ class DatabaseManager:
                             "Total": f"{elapsed:.1f}s",
                             "Reg/s": f"{rate:.0f}"
                         })
+                        
         except Exception as e:            
             self.log('error', f"Falha crítica durante a inserção de dados em {table_name}: {e}", exc_info=True)
             raise
@@ -418,14 +421,17 @@ class DatabaseManager:
             table_name: Nome completo da tabela (schema.tabela)
             batch_df: DataFrame com os dados do lote
         """
+        
         data = batch_df.to_dict(orient='records')
         if not data:
             return
             
         columns = list(data[0].keys())
         placeholders = ', '.join([':' + col for col in columns])
+        quote_columns = [f'"{col}"' for col in columns] #verificar se é interessante normalizar esses textos antes de inserir no banco de dados
+        
         query = f"""
-            INSERT INTO {table_name} ({', '.join(columns)})
+            INSERT INTO {table_name} ({', '.join(quote_columns)})
             VALUES ({placeholders})
         """
         conn.execute(text(query), data)
@@ -441,6 +447,7 @@ class DatabaseManager:
         """
         conditions = []
         params = {}
+        
         for col, values in filters.items():
             if values:
                 param_name = f"{col}_vals"
@@ -448,6 +455,7 @@ class DatabaseManager:
                 params[param_name] = tuple(values)
         
         where_clause = " AND ".join(conditions) if conditions else "1=1"
+        
         return f"{base_query} WHERE {where_clause}", params
 
     def _create_composite_key(self, df: pd.DataFrame, key_columns: List[str]) -> pd.Series:
@@ -455,7 +463,7 @@ class DatabaseManager:
         # Preenche NA com string vazia para evitar NaN na chave
         return df[key_columns].fillna('').astype(str).apply('_'.join, axis=1)
 
-    def validate_data(self, full_table_name: str, df: pd.DataFrame, backup_dir: Optional[Path] = None,policy: str = 'S') -> Optional[pd.DataFrame]:
+    def validate_data_table(self, full_table_name: str, df: pd.DataFrame, backup_dir: Optional[Path] = None,policy: str = 'S') -> Optional[pd.DataFrame]:
         """
         Verifica dados existentes com política pré-definida
         Args:
@@ -476,17 +484,28 @@ class DatabaseManager:
         if not key_columns:
             self.log('info', f"Não foram encontradas colunas chave para {table_name}")
             return df
-
+        
+        self.log('info', f"Consultar registros existentes: {table_name}")
         # Consultar registros existentes
         unique_values = {col: df[col].dropna().unique().tolist() for col in key_columns}
         base_query = f"SELECT {', '.join(key_columns)} FROM {full_table_name}"
+        self.log('info', f"Realizando a dinamic query: {base_query} + {unique_values}")
         query, params = self._build_dynamic_query(base_query, unique_values)
         
-        existing_df = self.execute_query(query, params)
+        # Consultar registros existentes (usando return_type='dataframe' explícito)
+        try:
+            self.log('info', f"Verificando dados existentes para {table_name}")
+            existing_df = self.execute_query(query, params, return_type='dataframe')
+        except Exception as e:
+            self.log('error', f"Erro ao verificar dados existentes: {e}")
+            raise
         
         if existing_df.empty:
             self.log('info', f"Não foram encontradas duplicatas para {table_name}")
             return df
+        
+
+
 
         # Verificar duplicatas
         df['temp_key'] = self._create_composite_key(df, key_columns)
@@ -497,6 +516,7 @@ class DatabaseManager:
         
         self.log('info', f"\nTabela: {table_name}")
         self.log('info', f"Total registros: {len(df)} | Duplicatas: {duplicates_count}")
+
         
         # Aplica política pré-definida
         choice = policy.upper()
@@ -509,6 +529,8 @@ class DatabaseManager:
                 f"DELETE FROM {full_table_name}", 
                 unique_values
             )
+
+            # Executar DELETE sem precisar de retorno
             self.execute_non_query(delete_query, delete_params)
             self.log('info', f"Registros duplicados removidos: {duplicates_count}")
             df_to_insert = df.drop(columns=['temp_key', 'is_duplicate'])
@@ -521,26 +543,89 @@ class DatabaseManager:
         
         return df_to_insert
     
-    def execute_query(self, query: str, params: Dict = None, timeout: int = 30) -> pd.DataFrame:
+    def execute_query(self, query: str, params: Dict = None, timeout: int = 30,return_type: str = 'dataframe') -> Union[pd.DataFrame, int, str, None]:
         """
-        Executa uma query SQL e retorna os resultados
+        Executa uma query SQL e retorna resultados conforme o tipo especificado
         Args:
             query: Query SQL
             params: Parâmetros da query
             timeout: Timeout em segundos (opcional)
+            return_type: Tipo de retorno desejado:
+                'dataframe' - Retorna DataFrame com resultados (padrão)
+                'rowcount' - Retorna número de linhas afetadas
+                'query' - Retorna a query formatada como string
+                'none' - Não retorna nada (apenas executa)
         Returns:
-            DataFrame: Resultados da query
+            Resultado conforme return_type especificado
+        Exemplos de uso:
+        # 1. Obter query formatada para depuração
+        query_str = db_manager.execute_query(
+            "SELECT * FROM tabela WHERE id = :id",
+            {'id': 10},
+            return_type='query'
+        )
+
+        # 2. Executar DDL sem retorno
+        db_manager.execute_query(
+            "CREATE TABLE exemplo (id SERIAL PRIMARY KEY)",
+            return_type='none'
+        )
+
+        # 3. Obter número de linhas afetadas
+        deleted_rows = db_manager.execute_query(
+            "DELETE FROM temporario WHERE expirado = true",
+            return_type='rowcount'
+        )
+
+        # 4. Comportamento padrão (DataFrame)
+        df = db_manager.execute_query(
+            "SELECT * FROM produtos WHERE preco > :preco_min",
+            {'preco_min': 100}
+        )
         """
+        # Validação adicional
+        valid_return_types = ['dataframe', 'rowcount', 'query', 'none']
+        if return_type.lower() not in valid_return_types:
+            raise ValueError(f"Tipo de retorno inválido. Opções válidas: {', '.join(valid_return_types)}")
+        start_time = time.time()
         try:
+            # Formata a query para visualização
+            formatted_query = query
+            if params:
+                for key, value in params.items():
+                    try:
+                        formatted_query = str(formatted_query)
+                    except:
+                        self.logger.log('info',f'Erro ao tentar transformar a query em string: {formatted_query}')
+                        pass
+                    if isinstance(formatted_query, str):
+                        formatted_query = formatted_query.replace(f":{str(value)}", f"'{str(value)}'") #Aqui que há o problema de tipo, chega 'TextClause', mas deveria ser uma string, tenho que tratar isso
+            
+            if return_type == 'query':
+                return formatted_query
+            
             with self.engine.connect() as conn:
-                result = conn.execute(text(query), params or {})
+                result = conn.execute(text(query).execution_options(timeout=timeout), params or {})
+                
+                if return_type == 'rowcount':
+                    return result.rowcount
+                
+                if return_type == 'none':
+                    return None
+                    
+                # Comportamento padrão (dataframe)
                 if result.returns_rows:
                     return pd.DataFrame(result.fetchall(), columns=result.keys())
-                else:
-                    return pd.DataFrame()
+                return pd.DataFrame()
+                
         except Exception as e:
-            self.log('error', f"Erro na query: {e}\nQuery: {query}")
-            raise
+            error_msg = f"Erro na query: {e}\nQuery: {formatted_query}"
+            self.log('error', error_msg)
+            raise RuntimeError(error_msg)
+        
+        execution_time = time.time() - start_time
+        if execution_time > timeout/2:  # Se demorou mais da metade do timeout
+            self.log('warning', f"Query demorada: {execution_time:.2f}s / timeout esperado: {timeout/2:.2f}s\nQuery: {formatted_query[:500]}...")
     
     def execute_non_query(self, query: str, params: Dict = None, timeout: int = 30) -> None:
         """
@@ -596,14 +681,15 @@ class DatabaseManager:
         """Verifica se tabela existe"""
         try:
             self.logger.log('info', f"[DB] Verificando tabela '{schema}.{table}'...")
-            query = text(f"""
+            query = f"""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
                     WHERE table_schema = :schema 
                     AND table_name = :table
                 )
-            """)
-            result = self.execute_query(query, {'schema': schema, 'table': table})
+            """
+            result = self.execute_query(query, {'schema': schema, 'table': table}, return_type='dataframe')
+            self.logger.log('info', f'Resultado da query: {type(result)} / {result}')
             return result.iloc[0, 0] if not result.empty else False
         except Exception as e:            
             self.log('error', f"Erro ao verificar existência da tabela {schema}.{table}: {e}")
@@ -1007,6 +1093,7 @@ class SinapiProcessor:
             DataFrame: Dados processados
         """
         #iniciando
+        sheet_name = sheet_name.replace('/','\\')
         self.logger.log('info', f'Processando planilha {sheet_name} do arquivo {file_path}')
         try:            
             df = pd.read_excel(file_path, sheet_name=sheet_name, header=header_id)
@@ -1153,177 +1240,6 @@ class SinapiProcessor:
         except Exception as e:
             self.logger.log('error', f'Erro na limpeza dos dados: {str(e)}')
             raise
-
-class SinapiPipeline:
-    def __init__(self, config_path="CONFIG.json"):
-        self.config = self.load_config(config_path)
-        self.logger = SinapiLogger("SinapiPipeline", self.config.get('log_level', 'info'))
-        self.downloader = SinapiDownloader(cache_minutes=90)
-        self.file_manager = FileManager()
-        self.processor = SinapiProcessor()
-        self.excel_processor = ExcelProcessor()
-        self.db_manager = None
-
-    def load_config(self, config_path):
-        """Carrega o arquivo de configuração"""
-        try:
-            with open(config_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            self.logger.log('critical', f'Erro ao carregar configuração: {e}')
-            raise
-
-    def get_parameters(self):
-        """Obtém parâmetros de execução do config ou do usuário"""
-        params = {
-            'ano': self.config.get('default_year'),
-            'mes': self.config.get('default_month'),
-            'formato': self.config.get('default_format', 'xlsx'),
-            'workbook': self.config.get('default_workbook', 'REFERENCIA'),
-        }
-        
-        # Preenche valores faltantes via input do usuário
-        if not params['ano']:
-            params['ano'] = input('Digite o ano (YYYY): ').strip()
-        if not params['mes']:
-            params['mes'] = input('Digite o mês (MM): ').strip()
-        
-        # Validação básica
-        if not params['ano'].isdigit() or len(params['ano']) != 4:
-            raise ValueError("Ano inválido!")
-        if not params['mes'].isdigit() or len(params['mes']) != 2:
-            raise ValueError("Mês inválido!")
-        
-        return params
-
-    def setup_database(self):
-        """Configura a conexão com o banco de dados"""
-        secrets_path = self.config['secrets_path']
-        
-        if not os.path.exists(secrets_path):
-            raise FileNotFoundError(f'Arquivo de secrets não encontrado: {secrets_path}')
-        
-        self.db_manager = create_db_manager(
-            secrets_path=secrets_path,
-            log_level=self.config.get('log_level', 'info'),
-            output='target'
-        )
-        
-        # Garante existência dos schemas
-        self.db_manager.create_schemas(['public', 'sinapi'])
-
-    def download_and_extract_files(self, params):
-        """Gerencia download e extração de arquivos"""
-        ano = params['ano']
-        mes = params['mes']
-        formato = params['formato']
-        diretorio_referencia = f"./{ano}_{mes}"
-        
-        # Cria diretório se necessário
-        if not os.path.exists(diretorio_referencia):
-            os.makedirs(diretorio_referencia)
-        
-        # Verifica se o arquivo já existe
-        filefinder_result = self.downloader._zip_filefinder(diretorio_referencia, ano, mes, formato)
-        
-        # Trata diferentes tipos de retorno
-        if isinstance(filefinder_result, tuple) and len(filefinder_result) == 2:
-            # Caso retorne (zipFiles, selectFile)
-            zip_files, select_file = filefinder_result
-            if select_file:
-                zip_path = list(select_file.values())[0]
-            else:
-                zip_path = None
-        elif isinstance(filefinder_result, str):
-            # Caso retorne diretamente o caminho
-            zip_path = filefinder_result
-        else:
-            zip_path = None
-        
-        # Faz download se necessário
-        if not zip_path:
-            zip_path = self.downloader.download_file(ano, mes, formato, sleeptime=1, count=3)
-            if not zip_path:
-                raise RuntimeError("Falha no download do arquivo")
-        
-        # Extrai arquivos
-        extraction_path = self.downloader.unzip_file(zip_path)
-        return extraction_path
-
-    def process_spreadsheets(self, extraction_path, planilha_name):
-        """Processa as planilhas usando padrão Strategy"""
-        # Normaliza nomes de arquivos
-        self.file_manager.normalize_files(extraction_path, extension='xlsx')
-        
-        # Identifica planilhas disponíveis
-        workbook = self.excel_processor.scan_directory(
-            diretorio=extraction_path,
-            formato='xlsx',
-            data=True,
-            sheet={planilha_name: extraction_path}
-        )
-        
-        df_list = {}
-        for sheet_name in workbook.get(planilha_name, []):
-            sheet_config = self.config['sheet_processors'].get(
-                sheet_name[0],
-                self.processor.identify_sheet_type(sheet_name[0])
-            )
-            
-            if not sheet_config:
-                self.logger.log('warning', f'Configuração não encontrada para: {sheet_name[0]}')
-                continue
-                
-            # Processa a planilha
-            df = self.processor.process_excel(
-                f'{extraction_path}/{planilha_name}',
-                sheet_name[0],
-                sheet_config['header_id'],
-                sheet_config['split_id']
-            )
-            
-            # Limpa e normaliza dados
-            clean_df = self.processor.clean_data(df)
-            table_name = self.file_manager.normalize_text(
-                f'{planilha_name.split(".")[0]}_{sheet_name[0]}'
-            )
-            df_list[table_name] = clean_df
-        
-        return df_list
-
-    def handle_database_operations(self, df_list):
-        """Gerencia operações de banco de dados"""
-        duplicate_policy = self.config.get('duplicate_policy', 'substituir').upper()
-        backup_dir = self.config.get('backup_dir', './backups')
-        
-        for table_name, df in df_list.items():
-            full_table_name = f"sinapi.{table_name}"
-            
-            try:
-                # Valida e prepara dados para inserção
-                df_to_insert = self.db_manager.validate_data(
-                    full_table_name=full_table_name,
-                    df=df,
-                    backup_dir=backup_dir,
-                    policy=duplicate_policy  # Novo parâmetro
-                )
-                
-                if df_to_insert is not None:
-                    self.db_manager.insert_data('sinapi', table_name, df_to_insert)
-            except Exception as e:
-                self.logger.log('error', f'Erro ao inserir dados: {e}')
-
-    def export_results(self, df_list, params):
-        """Exporta resultados para CSV"""
-        ano = params['ano']
-        mes = params['mes']
-        diretorio_referencia = f"./{ano}_{mes}"
-        
-        for table_name, df in df_list.items():
-            csv_filename = f"{table_name}_{ano}_{mes}.csv"
-            csv_path = os.path.join(diretorio_referencia, csv_filename)
-            df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-            self.logger.log('info', f"DataFrame exportado para: {csv_path}")
 
 #Funções Auxiliares
 
