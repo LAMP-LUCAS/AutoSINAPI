@@ -1,6 +1,6 @@
-# AutoSINAPIpostgres
+# AutoSINAPI
 
-Este repositório tem como objetivo o desenvolvimento open source de uma solução para captação, tratamento e inserção dos dados do SINAPI (Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil) em um banco de dados PostgreSQL de forma estruturada, editável e atualizável de maneira autônoma.
+Este repositório tem como objetivo o desenvolvimento open source de uma solução para captação, tratamento e inserção dos dados do SINAPI (Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil) em um banco de dados PostgreSQL de forma estruturada, editável e atualizável de maneira autônoma. Atualmente está realizando os seus objetivos, porém busca-se criar uma api RESTFULL para facilitar a consulta desses dados e uma integração com a API SINCRO para captar e tratar os dados SINAPI em vários fornecedores mantendo um bypass e segurança em seus consumos. Eu te convido a participar desse projeto e dos outros incluídos no foton, veja mais no repositório FOTON aqui no Github: [FOTON](https://github.com/LAMP-LUCAS/foton)
 
 ## Objetivos
 
