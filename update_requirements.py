@@ -33,7 +33,7 @@ def get_py_files(directory):
     py_files = []
     for root, dirs, files in os.walk(directory):
         # Excluir diretórios específicos
-        dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__','venv','env','node_modules']]
+        dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__','venv','env','node_modules','docs','tests']]
         for file in files:
             if file.endswith('.py'):
                 py_files.append(Path(root) / file)
@@ -59,6 +59,8 @@ def get_package_name(import_name):
         'time': None,  # módulo built-in
         'zipfile': None,  # módulo built-in
         'logging': None,  # módulo built-in
+        'Random': None,  # módulo built-in
+        'sinapi_utils':None, #módulo interno
     }
     return package_mapping.get(import_name, import_name)
 

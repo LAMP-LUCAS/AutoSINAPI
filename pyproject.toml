@@ -10,20 +10,14 @@ authors = [
 ]
 description = "Pacote para automação do SINAPI"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.0"
 dependencies = [
-    "pandas>=2.0",
-    "openpyxl>=3.0",
-    "argparse",
-    "rastreador_xlsx",
+    "numpy",
+    "openpyxl",
+    "pandas",
     "requests",
+    "setuptools",
     "sqlalchemy",
-    "sys",
     "tqdm",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "black",
+    "typing",
 ]

@@ -6,15 +6,14 @@ setup(
     packages=find_packages(where="."),
     package_dir={"": "."},
     install_requires=[
-        'pandas>=2.0',
-        'openpyxl>=3.0',
-        'argparse',
-        'rastreador_xlsx',
+        'numpy',
+        'openpyxl',
+        'pandas',
         'requests',
+        'setuptools',
         'sqlalchemy',
-        'sys',
         'tqdm',
-        # Adicione apenas dependências externas aqui
+        'typing',
     ],
-    python_requires='>=3.8',
+    python_requires='>=3.0',
 )

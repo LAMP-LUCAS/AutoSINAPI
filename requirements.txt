@@ -1,8 +1,8 @@
-argparse
+numpy
 openpyxl
 pandas
-rastreador_xlsx
 requests
+setuptools
 sqlalchemy
-sys
 tqdm
+typing
