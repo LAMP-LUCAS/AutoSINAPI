@@ -227,7 +227,7 @@ Sugestões, dúvidas ou colaborações são bem-vindas via issues ou pull reques
  ┃ ┣ 📜autosinapi_pipeline.py
  ┃ ┣ 📜CONFIG.json
  ┃ ┣ 📜sinap_webscraping_download_log.json
- ┃ ┣ 📜sql_access copy.secrets.example
+ ┃ ┣ 📜sql_access.secrets.example
  ┃ ┗ 📜__init__.py
  ┣ 📜.gitignore
  ┣ 📜pyproject.toml
