@@ -101,10 +101,28 @@ class Downloader:
             raise DownloadError(f"Erro no download: {str(e)}")
     
     def _build_url(self) -> str:
-        """Constrói a URL do arquivo SINAPI."""
-        # TODO: Implementar a lógica de construção da URL
-        base_url = "https://www.caixa.gov.br/Downloads/sinapi-..."
-        return base_url
+        """
+        Constrói a URL do arquivo SINAPI com base nas configurações.
+        
+        Returns:
+            str: URL completa para download do arquivo
+        """
+        base_url = "https://www.caixa.gov.br/Downloads/sinapi-a-vista-composicoes"
+        
+        # Formata ano e mês com zeros à esquerda
+        ano = str(self.config['year']).zfill(4)
+        mes = str(self.config['month']).zfill(2)
+        
+        # Determina o tipo de planilha
+        tipo = self.config.get('type', 'REFERENCIA').upper()
+        if tipo not in ['REFERENCIA', 'DESONERADO']:
+            raise ValueError(f"Tipo de planilha inválido: {tipo}")
+        
+        # Constrói a URL
+        file_name = f"SINAPI_{tipo}_{mes}_{ano}"
+        url = f"{base_url}/{file_name}.zip"
+        
+        return url
     
     def __enter__(self):
         """Permite uso do contexto 'with'."""

@@ -16,7 +16,7 @@ def sinapi_config():
         'state': 'SP',
         'month': '01',
         'year': '2023',
-        'type': 'insumos'
+        'type': 'REFERENCIA'
     }
 
 @pytest.fixture
@@ -25,6 +25,54 @@ def mock_response():
     response.content = b'test content'
     response.raise_for_status = Mock()
     return response
+
+# Testes de URL Building
+def test_build_url_referencia(sinapi_config):
+    """Testa construção de URL para planilha referencial."""
+    downloader = Downloader(sinapi_config, 'server')
+    url = downloader._build_url()
+    
+    assert 'SINAPI_REFERENCIA_01_2023.zip' in url
+    assert url.startswith('https://www.caixa.gov.br/Downloads/sinapi-a-vista-composicoes')
+
+def test_build_url_desonerado():
+    """Testa construção de URL para planilha desonerada."""
+    config = {
+        'state': 'SP',
+        'month': '12',
+        'year': '2023',
+        'type': 'DESONERADO'
+    }
+    downloader = Downloader(config, 'server')
+    url = downloader._build_url()
+    
+    assert 'SINAPI_DESONERADO_12_2023.zip' in url
+
+def test_build_url_invalid_type():
+    """Testa erro ao construir URL com tipo inválido."""
+    config = {
+        'state': 'SP',
+        'month': '01',
+        'year': '2023',
+        'type': 'INVALIDO'
+    }
+    downloader = Downloader(config, 'server')
+    
+    with pytest.raises(ValueError, match="Tipo de planilha inválido"):
+        downloader._build_url()
+
+def test_build_url_zero_padding():
+    """Testa padding com zeros nos números."""
+    config = {
+        'state': 'SP',
+        'month': 1,  # Número sem zero
+        'year': 2023,
+        'type': 'REFERENCIA'
+    }
+    downloader = Downloader(config, 'server')
+    url = downloader._build_url()
+    
+    assert 'SINAPI_REFERENCIA_01_2023.zip' in url
 
 # Testes
 @patch('autosinapi.core.downloader.requests.Session')
