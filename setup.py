@@ -22,7 +22,7 @@ setup(
     author="Lucas Antonio M. Pereira",
     author_email="contato@arqlamp.com",
     description="Toolkit para automação do SINAPI",
-    long_description=open('README.md').read(),
+    long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type="text/markdown",
     classifiers=[
         "Development Status :: 4 - Beta",
