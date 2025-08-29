@@ -1,17 +1,5 @@
 """
-Módulo responsável pelo download e gerenciamento dos arqu    def _download_file(self, save_path: Optional[Path] = None) -> BinaryIO:
-        """
-        Realiza o download do arquivo SINAPI do servidor.
-        
-        Args:
-            save_path: Caminho para salvar o arquivo (apenas em modo local)
-        
-        Returns:
-            BytesIO: Stream com o conteúdo do arquivo
-        
-        Raises:
-            DownloadError: Se houver erro no download
-        """
+Módulo responsável pelo download e gerenciamento dos arquivos SINAPI.
 """
 from typing import Dict, Optional, BinaryIO, Union
 import requests
