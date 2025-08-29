@@ -1,17 +1,5 @@
 """
-Módulo responsável pelo download e gerenciamento dos arqu    def _download_file(self, save_path: Optional[Path] = None) -> BinaryIO:
-        """
-        Realiza o download do arquivo SINAPI do servidor.
-        
-        Args:
-            save_path: Caminho para salvar o arquivo (apenas em modo local)
-        
-        Returns:
-            BytesIO: Stream com o conteúdo do arquivo
-        
-        Raises:
-            DownloadError: Se houver erro no download
-        """
+Módulo responsável pelo download e gerenciamento dos arquivos SINAPI.
 """
 from typing import Dict, Optional, BinaryIO, Union
 import requests
@@ -101,10 +89,28 @@ class Downloader:
             raise DownloadError(f"Erro no download: {str(e)}")
     
     def _build_url(self) -> str:
-        """Constrói a URL do arquivo SINAPI."""
-        # TODO: Implementar a lógica de construção da URL
-        base_url = "https://www.caixa.gov.br/Downloads/sinapi-..."
-        return base_url
+        """
+        Constrói a URL do arquivo SINAPI com base nas configurações.
+        
+        Returns:
+            str: URL completa para download do arquivo
+        """
+        base_url = "https://www.caixa.gov.br/Downloads/sinapi-a-vista-composicoes"
+        
+        # Formata ano e mês com zeros à esquerda
+        ano = str(self.config['year']).zfill(4)
+        mes = str(self.config['month']).zfill(2)
+        
+        # Determina o tipo de planilha
+        tipo = self.config.get('type', 'REFERENCIA').upper()
+        if tipo not in ['REFERENCIA', 'DESONERADO']:
+            raise ValueError(f"Tipo de planilha inválido: {tipo}")
+        
+        # Constrói a URL
+        file_name = f"SINAPI_{tipo}_{mes}_{ano}"
+        url = f"{base_url}/{file_name}.zip"
+        
+        return url
     
     def __enter__(self):
         """Permite uso do contexto 'with'."""

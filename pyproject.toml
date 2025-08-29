@@ -31,10 +31,11 @@ test = [
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q --cov=autosinapi"
+addopts = "-ra -q"
 testpaths = [
     "tests",
 ]
+pythonpath = ["."]
 
 [tool.coverage.run]
 source = ["autosinapi"]

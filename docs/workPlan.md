@@ -1,11 +1,30 @@
+# Plano de Trabalho e Roadmap do Módulo AutoSINAPI
 
-Como arquiteto da API, meu papel é definir o "contrato": como a API irá interagir com o módulo `AutoSINAPI`, quais as responsabilidades de cada um, e qual a arquitetura que garante a viabilidade econômica, segurança e performance que buscamos.
+Este documento serve como um guia central para o desenvolvimento, acompanhamento e verificação das entregas do módulo `AutoSINAPI`. Ele define a arquitetura, a interface pública e o caminho a ser seguido.
 
-Vamos organizar essa ideia em um plano de desenvolvimento lógico e estruturado.
+## 1. Objetivos e Entregas Principais
 
------
+O objetivo final é transformar o `AutoSINAPI` em uma biblioteca Python (`toolkit`) robusta, testável e desacoplada, pronta para ser consumida por outras aplicações, como uma API REST ou uma CLI.
 
-### **Visão Geral da Arquitetura: API, Toolkit e Tarefas em Segundo Plano**
+As entregas incluem:
+- **Pipeline ETL**: Processamento completo de arquivos do SINAPI, aderente ao `DataModel.md`.
+- **Cobertura de Testes**: Testes unitários e de integração automatizados.
+- **Interface Pública**: Uma função `run_etl()` clara e padronizada.
+- **Arquitetura Modular**: Código organizado em módulos com responsabilidades únicas (`downloader`, `processor`, `database`).
+- **Documentação**: Manuais de uso, arquitetura e contribuição.
+
+## 2. Status Geral (Visão Macro)
+
+Use esta seção para um acompanhamento rápido do progresso geral.
+
+- [ ] **Fase 1**: Refatoração do Módulo para Toolkit
+- [ ] **Fase 2**: Cobertura de Testes Unitários e de Integração
+- [ ] **Fase 3**: Empacotamento e Documentação Final
+- [ ] **Fase 4**: Implementação da API e CLI (Pós-Toolkit)
+
+---
+
+## 3. Visão Geral da Arquitetura
 
 A nossa arquitetura será baseada em **desacoplamento**. A API não executará o pesado processo de ETL diretamente. Em vez disso, ela atuará como um **controlador**, delegando a tarefa para um **trabalhador (worker)** em segundo plano. O módulo `AutoSINAPI` será o **toolkit** que o trabalhador utilizará.
 
@@ -41,9 +60,9 @@ A nossa arquitetura será baseada em **desacoplamento**. A API não executará o
 
 -----
 
-### **Parte 1: O Contrato de Serviço (As Diretrizes para o Módulo `AutoSINAPI`)**
+## 4. O Contrato do Toolkit (Interface Pública)
 
-Para que a API possa usar o `AutoSINAPI` como um toolkit, o módulo precisa evoluir para uma biblioteca que exponha uma interface (API) clara. Como desenvolvedor da API, eu defino o que preciso que essa biblioteca me entregue.
+Para que o `AutoSINAPI` seja consumível por outras aplicações, ele deve expor uma interface clara e previsível.
 
 #### **Requisito 1: A Interface Pública do Módulo**
 
@@ -97,11 +116,11 @@ A função `run_etl` deve retornar um dicionário com o status da operação e l
 
 -----
 
-### **Parte 2: O Caminho do Desenvolvimento (Etapas Lógicas)**
+## 5. Roadmap de Desenvolvimento (Etapas Detalhadas)
 
-Este é o roadmap que seguiremos.
+Este é o plano de ação detalhado, dividido em fases e tarefas.
 
-#### **Fase 1: Evolução do `AutoSINAPI` para um Toolkit (Responsabilidade do Desenvolvedor do Módulo)**
+### Fase 1: Evolução do `AutoSINAPI` para um Toolkit
 
 Esta fase é sobre preparar o módulo para ser consumido pela nossa API.
 
@@ -109,11 +128,11 @@ Esta fase é sobre preparar o módulo para ser consumido pela nossa API.
   * **Etapa 1.2: Implementar a Lógica de Configuração Centralizada:** Remover toda a leitura de arquivos de configuração de dentro das classes e fazer com que elas recebam suas configurações via construtor (`__init__`).
   * **Etapa 1.3: Criar a Interface Pública:** Criar a função `run_etl(db_config, sinapi_config, mode)` que orquestra as chamadas para as classes internas.
 
-    * **Etapa1.3.1: Desacoplar as Classes (Injeção de Dependência):** Em vez de uma classe criar outra (ex: self.downloader = SinapiDownloader()), ela deve recebê-la como um parâmetro em seu construtor (__init__(self, downloader)). Isso torna o código muito mais flexível e testável.
+    * **Etapa 1.3.1: Desacoplar as Classes (Injeção de Dependência):** Em vez de uma classe criar outra (ex: `self.downloader = SinapiDownloader()`), ela deve recebê-la como um parâmetro em seu construtor (`__init__(self, downloader)`). Isso torna o código muito mais flexível e testável.
   * **Etapa 1.4: Implementar o Modo Duplo:** Dentro das classes `downloader` e `processor`, adicionar a lógica `if mode == 'server': ... else: ...` para lidar com operações em memória vs. em disco.
   * **Etapa 1.5: Empacotamento:** Garantir que o módulo seja instalável via `pip` com um `setup.py` ou `pyproject.toml`.
 
-Nova Estrutura de Diretórios revista:
+**Estrutura de Diretórios Alvo:**
 
 ```
 /AutoSINAPI/
@@ -178,98 +197,120 @@ Estrutura de Diretórios de Teste
 │   │   └── test_database.py
 │   ├── test_pipeline.py
 │   └── fixtures/           # <--- Para guardar arquivos de teste (ex: um .xlsx pequeno)
-└── ...
-1. Testes para core/downloader.py
-Objetivo: Garantir que a lógica de download, retry e tratamento de erros de rede funcione corretamente, sem fazer nenhuma chamada real à internet.
 
-O que Simular (Mock): A função requests.get.
+## Plano de Testes Unitários e de Integração
 
-Cenários de Teste:
+A seguir, detalhamos o plano de testes para cada módulo do AutoSINAPI, utilizando boas práticas de Markdown para facilitar a leitura e consulta.
 
-test_download_sucesso: Simular um requests.get que retorna um status 200 OK e um conteúdo de zip falso. Verificar se a função retorna o conteúdo esperado.
+---
 
-test_download_falha_404: Simular um requests.get que levanta um erro HTTPError com status 404. Verificar se o downloader trata o erro corretamente, talvez levantando uma exceção customizada DownloadError.
+### 1. Testes para `core/downloader.py`
 
-test_download_com_retry: Simular um requests.get que falha nas duas primeiras chamadas (ex: com Timeout) e funciona na terceira. Verificar se a lógica de retry é acionada.
+**Objetivo:**  
+Garantir que a lógica de download, retry e tratamento de erros de rede funcione corretamente, sem chamadas reais à internet.
 
-test_download_com_proxy: Verificar se, ao usar proxies, a chamada a requests.get é feita com o parâmetro proxies preenchido corretamente.
+**Mock:**  
+- `requests.get`
 
-2. Testes para core/processor.py
-Objetivo: Garantir que o processamento dos dados do Excel (limpeza, normalização, transformação) está correto para diferentes cenários.
+**Cenários de Teste:**
 
-O que Simular (Mock): Não há mocks externos, mas usaremos dados de teste. Criaremos pequenos DataFrames pandas ou até mesmo um arquivo .xlsx de exemplo no diretório tests/fixtures/ com dados "sujos".
+| Teste                        | Descrição                                                                                  |
+|------------------------------|-------------------------------------------------------------------------------------------|
+| `test_download_sucesso`      | Simula um `requests.get` que retorna status 200 OK e conteúdo de zip falso. Verifica se a função retorna o conteúdo esperado. |
+| `test_download_falha_404`    | Simula um `requests.get` que levanta `HTTPError` 404. Verifica se o downloader trata o erro corretamente, levantando `DownloadError`. |
+| `test_download_com_retry`    | Simula falha nas duas primeiras chamadas (ex: Timeout) e sucesso na terceira. Verifica se a lógica de retry é acionada. |
+| `test_download_com_proxy`    | Verifica se, ao usar proxies, a chamada a `requests.get` é feita com o parâmetro `proxies` corretamente preenchido. |
 
-Cenários de Teste:
+---
 
-test_normalizacao_texto: Testar a função de normalizar texto com strings contendo acentos, maiúsculas/minúsculas e espaços extras. Verificar se a saída está correta.
+### 2. Testes para `core/processor.py`
 
-test_limpeza_dataframe: Passar um DataFrame com valores nulos, colunas com nomes "sujos" e tipos de dados incorretos. Verificar se o DataFrame de saída está limpo e padronizado.
+**Objetivo:**  
+Garantir que o processamento dos dados do Excel (limpeza, normalização, transformação) está correto para diferentes cenários.
 
-test_processamento_melt: Para as planilhas que precisam de "unpivot", passar um DataFrame de exemplo e verificar se a transformação melt resulta na estrutura de colunas e linhas esperada.
+**Mocks/Dados de Teste:**  
+- Pequenos DataFrames pandas ou arquivos `.xlsx` de exemplo em `tests/fixtures/`.
 
-test_identificacao_tipo_planilha: Passar diferentes nomes de planilhas (ex: "SINAPI_CSD_...", "SINAPI_ISD_...") e verificar se a função retorna a configuração correta de header_id e split_id.
+**Cenários de Teste:**
 
-3. Testes para core/database.py
-Objetivo: Garantir que a lógica de interação com o banco de dados (criação de tabelas, inserção, deleção) gera os comandos SQL corretos, sem conectar a um banco de dados real.
+| Teste                        | Descrição                                                                                  |
+|------------------------------|-------------------------------------------------------------------------------------------|
+| `test_normalizacao_texto`    | Testa normalização de texto com acentos, maiúsculas/minúsculas e espaços extras.          |
+| `test_limpeza_dataframe`     | Passa DataFrame com valores nulos, colunas "sujas" e tipos incorretos. Verifica limpeza e padronização. |
+| `test_processamento_melt`    | Testa transformação "melt" em DataFrame de exemplo, verificando estrutura de colunas e linhas. |
+| `test_identificacao_tipo_planilha` | Passa diferentes nomes de planilhas e verifica se retorna a configuração correta de `header_id` e `split_id`. |
 
-O que Simular (Mock): O objeto engine do SQLAlchemy e suas conexões. Vamos verificar quais comandos são enviados para o método .execute().
+---
 
-Cenários de Teste:
+### 3. Testes para `core/database.py`
 
-test_create_table_com_inferencia: Passar um DataFrame e verificar se o comando CREATE TABLE ... gerado contém os nomes de coluna e os tipos SQL corretos.
+**Objetivo:**  
+Garantir que a lógica de interação com o banco de dados (criação de tabelas, inserção, deleção) gera os comandos SQL corretos, sem conexão real.
 
-test_insert_data_em_lotes: Passar um DataFrame com mais de 1000 linhas (o tamanho do lote) e verificar se o método de inserção é chamado múltiplas vezes (uma para cada lote).
+**Mock:**  
+- Objeto `engine` do SQLAlchemy e suas conexões.
 
-test_logica_de_duplicatas_substituir: Simular que o banco já contém alguns registros. Chamar a função de validação com a política "substituir". Verificar se um comando DELETE FROM ... é executado antes do INSERT.
+**Cenários de Teste:**
 
-test_logica_de_duplicatas_agregar: Fazer o mesmo que o anterior, mas com a política "agregar". Verificar se os dados inseridos são apenas os que não existiam no banco.
+| Teste                        | Descrição                                                                                  |
+|------------------------------|-------------------------------------------------------------------------------------------|
+| `test_create_table_com_inferencia` | Passa DataFrame e verifica se o comando `CREATE TABLE` gerado contém nomes de coluna e tipos SQL corretos. |
+| `test_insert_data_em_lotes`  | Passa DataFrame com mais de 1000 linhas e verifica se a inserção é chamada em múltiplos lotes. |
+| `test_logica_de_duplicatas_substituir` | Simula registros existentes e política "substituir". Verifica se `DELETE FROM ...` é executado antes do `INSERT`. |
+| `test_logica_de_duplicatas_agregar` | Simula política "agregar". Verifica se apenas dados não existentes são inseridos. |
 
-4. Testes de Integração para pipeline.py e a Interface Pública
-Objetivo: Garantir que a função principal run_etl orquestra as chamadas aos outros componentes na ordem correta.
+---
 
-O que Simular (Mock): As classes Downloader, Processor e DatabaseManager inteiras.
+### 4. Testes de Integração para `pipeline.py` e Interface Pública
 
-Cenários de Teste:
+**Objetivo:**  
+Garantir que a função principal `run_etl` orquestra corretamente as chamadas aos componentes.
 
-test_run_etl_fluxo_ideal: Simular que cada componente funciona perfeitamente. Chamar run_etl(). Verificar se downloader.download() foi chamado, depois processor.process(), e por último database.insert().
+**Mock:**  
+- Classes `Downloader`, `Processor` e `DatabaseManager`.
 
-test_run_etl_com_falha_no_download: Simular que o downloader.download() levanta uma exceção. Chamar run_etl(). Verificar se o processor e o database não foram chamados, provando que o pipeline parou corretamente.
+**Cenários de Teste:**
 
-test_run_etl_passa_configs_corretamente: Chamar run_etl() com dicionários de configuração específicos. Verificar se os construtores ou métodos dos componentes mockados foram chamados com esses mesmos dicionários.
+| Teste                        | Descrição                                                                                  |
+|------------------------------|-------------------------------------------------------------------------------------------|
+| `test_run_etl_fluxo_ideal`   | Simula funcionamento perfeito dos componentes. Verifica ordem das chamadas: `download()`, `process()`, `insert()`. |
+| `test_run_etl_com_falha_no_download` | Simula exceção em `downloader.download()`. Verifica se `processor` e `database` não são chamados. |
+| `test_run_etl_passa_configs_corretamente` | Chama `run_etl()` com configs específicas. Verifica se componentes mockados recebem os dicionários corretos. |
 
-Plano de Trabalho Sugerido
-Configurar o Ambiente de Teste:
+---
 
-Criar a estrutura de diretórios tests/.
+## Plano de Trabalho Sugerido
 
-Adicionar pytest, pytest-mock e pytest-cov ao requirements.txt de desenvolvimento.
+### 1. Configuração do Ambiente de Teste
 
-Desenvolvimento Orientado a Testes (por módulo):
+- Criar a estrutura de diretórios `tests/`.
+- Adicionar `pytest`, `pytest-mock` e `pytest-cov` ao `requirements.txt` de desenvolvimento.
 
-Começar pelos módulos mais isolados e com menos dependências (ex: processor.py e file_manager.py). Escrever os testes primeiro, vê-los falhar, e depois implementar a lógica no módulo para fazê-los passar.
+### 2. Desenvolvimento Orientado a Testes (TDD)
 
-Em seguida, testar o downloader.py, focando na simulação das chamadas de rede.
+1. **Começar pelos módulos mais isolados:**  
+  - `processor.py` e `file_manager.py`: Escrever testes primeiro, implementar lógica para fazê-los passar.
+2. **Testar `downloader.py`:**  
+  - Foco na simulação das chamadas de rede.
+3. **Testar `database.py`:**  
+  - Simular conexão e verificar queries SQL geradas.
+4. **Testes de integração:**  
+  - Para `pipeline.py` e função pública `run_etl`, simulando as classes já testadas.
 
-Depois, o database.py, focando na simulação da conexão e na verificação das queries SQL geradas.
+### 3. Integração Contínua (CI)
 
-Por último, escrever os testes de integração para o pipeline.py e a função pública run_etl, simulando as classes já testadas.
+- Configurar ferramenta como **GitHub Actions** para rodar todos os testes automaticamente a cada push ou pull request.
 
-Integração Contínua (CI):
+### 4. Documentação dos Testes
 
-Após a criação dos testes, o passo final é configurar uma ferramenta como GitHub Actions para rodar todos os testes automaticamente a cada push ou pull request. Isso garante que nenhum código novo quebre a funcionalidade existente.
+Para garantir manutenibilidade e compreensão, documente cada teste com:
 
-Documentação dos Testes:
+- **Descrição dos Testes:** Breve explicação do objetivo e comportamento esperado.
+- **Pré-condições:** Estado necessário antes do teste (ex: banco de dados, arquivos de entrada).
+- **Passos para Reproduzir:** Instruções detalhadas de execução, comandos e configurações.
+- **Resultados Esperados:** Saídas e efeitos colaterais esperados.
+- **Notas sobre Implementação:** Informações adicionais relevantes para entendimento ou manutenção.
 
-Para garantir a manutenibilidade e a compreensão do código, é essencial documentar os testes de forma clara e concisa. A documentação deve incluir:
+> **Dica:** Mantenha a documentação dos testes sempre atualizada conforme novas funcionalidades forem adicionadas ao sistema.
 
-1. **Descrição dos Testes**: Para cada teste, incluir uma breve descrição do que está sendo testado e qual é o comportamento esperado.
-
-2. **Pré-condições**: Listar quaisquer pré-condições que devem ser atendidas antes da execução do teste (ex: estado do banco de dados, arquivos de entrada, etc.).
-
-3. **Passos para Reproduzir**: Instruções detalhadas sobre como executar o teste, incluindo comandos específicos e configurações necessárias.
-
-4. **Resultados Esperados**: Descrever o que constitui um resultado bem-sucedido para o teste, incluindo saídas esperadas e efeitos colaterais.
-
-5. **Notas sobre Implementação**: Qualquer informação adicional que possa ser útil para entender a lógica do teste ou sua implementação.
-
-Essa documentação deve ser mantida atualizada à medida que os testes evoluem e novas funcionalidades são adicionadas ao sistema.
+---

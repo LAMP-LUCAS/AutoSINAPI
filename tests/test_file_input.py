@@ -1,3 +1,31 @@
+def test_real_excel_input(tmp_path):
+    """Testa o pipeline com um arquivo Excel real do SINAPI."""
+    import shutil
+    from autosinapi import run_etl
+    # Copia um arquivo real para o tmp_path para simular input do usuário
+    src_file = 'tools/downloads/2025_07/SINAPI-2025-07-formato-xlsx/SINAPI_mao_de_obra_2025_07.xlsx'
+    test_file = tmp_path / 'SINAPI_mao_de_obra_2025_07.xlsx'
+    shutil.copy(src_file, test_file)
+
+    db_config = {
+        'host': 'localhost',
+        'port': 5432,
+        'database': 'test_db',
+        'user': 'test_user',
+        'password': 'test_pass'
+    }
+    sinapi_config = {
+        'state': 'SP',
+        'month': '07',
+        'year': '2025',
+        'type': 'insumos',
+        'input_file': str(test_file)
+    }
+    result = run_etl(db_config, sinapi_config, mode='server')
+    if result['status'] != 'success':
+        print('Erro no pipeline:', result)
+    assert result['status'] == 'success'
+    assert isinstance(result['details'].get('rows_processed', 1), int)
 """
 Testes do módulo de download com suporte a input direto de arquivo.
 """
