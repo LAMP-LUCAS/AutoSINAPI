@@ -51,11 +51,11 @@ def test_missing_sinapi_config(valid_db_config):
         Config(valid_db_config, {'state': 'SP'}, 'server')
     assert 'Configurações do SINAPI ausentes' in str(exc_info.value)
 
-def test_mode_properties():
+def test_mode_properties(valid_db_config, valid_sinapi_config):
     """Deve retornar corretamente o modo de operação."""
     config = Config(
-        valid_db_config(), 
-        valid_sinapi_config(), 
+        valid_db_config, 
+        valid_sinapi_config, 
         'server'
     )
     assert config.is_server_mode is True

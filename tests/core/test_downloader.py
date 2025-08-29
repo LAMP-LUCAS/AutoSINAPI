@@ -85,9 +85,7 @@ def test_successful_download(mock_session, sinapi_config, mock_response):
     
     # Executa o download
     downloader = Downloader(sinapi_config, 'server')
-    result = downloader.download()
-    
-    # Verifica o resultado
+    result = downloader.get_sinapi_data()
     assert isinstance(result, BytesIO)
     assert result.getvalue() == b'test content'
     session.get.assert_called_once()
@@ -103,8 +101,7 @@ def test_download_network_error(mock_session, sinapi_config):
     # Verifica se levanta a exceção correta
     with pytest.raises(DownloadError) as exc_info:
         downloader = Downloader(sinapi_config, 'server')
-        downloader.download()
-    
+        downloader.get_sinapi_data()
     assert 'Network error' in str(exc_info.value)
 
 @patch('autosinapi.core.downloader.requests.Session')
@@ -120,8 +117,7 @@ def test_local_mode_save(mock_session, sinapi_config, mock_response, tmp_path):
     
     # Executa o download em modo local
     downloader = Downloader(sinapi_config, 'local')
-    result = downloader.download(save_path)
-    
+    result = downloader.get_sinapi_data(save_path=save_path)
     # Verifica se salvou o arquivo
     assert save_path.exists()
     assert save_path.read_bytes() == b'test content'
