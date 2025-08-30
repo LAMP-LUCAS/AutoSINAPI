@@ -11,7 +11,6 @@ class Database:
     def create_tables(self):
         """
         Cria as tabelas do modelo de dados do SINAPI no banco PostgreSQL.
-        As tabelas são criadas na ordem correta para garantir integridade referencial.
         """
         ddl = """
         CREATE TABLE IF NOT EXISTS insumos (
@@ -72,22 +71,15 @@ class Database:
                 for stmt in ddl.split(';'):
                     if stmt.strip():
                         conn.execute(text(stmt))
+                conn.commit()
         except Exception as e:
             raise DatabaseError(f"Erro ao criar tabelas: {str(e)}")
-    # ...existing code...
-    
+
     def __init__(self, db_config: Dict[str, Any]):
-        """
-        Inicializa a conexão com o banco de dados.
-        
-        Args:
-            db_config: Configurações do banco de dados
-        """
         self.config = db_config
         self._engine = self._create_engine()
     
     def _create_engine(self) -> Engine:
-        """Cria a engine do SQLAlchemy."""
         try:
             url = (f"postgresql://{self.config['user']}:{self.config['password']}"
                   f"@{self.config['host']}:{self.config['port']}"
@@ -96,41 +88,40 @@ class Database:
         except Exception as e:
             raise DatabaseError("Erro ao conectar com o banco de dados")
     
-    def save_data(self, data: pd.DataFrame, table_name: str) -> None:
+    def save_data(self, data: pd.DataFrame, table_name: str, policy: str, year: str, month: str) -> None:
         """
-        Salva os dados no banco.
-        
-        Args:
-            data: DataFrame com os dados a serem salvos
-            table_name: Nome da tabela
-        
-        Raises:
-            DatabaseError: Se houver erro na operação
+        Salva os dados no banco, aplicando a política de duplicatas.
         """
+        if policy.lower() == 'substituir':
+            self._replace_data(data, table_name, year, month)
+        elif policy.lower() == 'append':
+            self._append_data(data, table_name)
+        else:
+            raise DatabaseError(f"Política de duplicatas desconhecida: {policy}")
+
+    def _append_data(self, data: pd.DataFrame, table_name: str):
         try:
-            data.to_sql(
-                name=table_name,
-                con=self._engine,
-                if_exists='append',
-                index=False
-            )
+            data.to_sql(name=table_name, con=self._engine, if_exists='append', index=False)
         except Exception as e:
             raise DatabaseError(f"Erro ao salvar dados: {str(e)}")
-    
+
+    def _replace_data(self, data: pd.DataFrame, table_name: str, year: str, month: str):
+        """Substitui os dados de um determinado período."""
+        # Adiciona a data de referência para o delete
+        data_referencia = f'{year}-{month}-01'
+        delete_query = text(f"DELETE FROM {table_name} WHERE TO_CHAR(data_referencia, 'YYYY-MM') = :ref")
+        
+        with self._engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                conn.execute(delete_query, {"ref": f"{year}-{month}"})
+                data.to_sql(name=table_name, con=conn, if_exists='append', index=False)
+                trans.commit()
+            except Exception as e:
+                trans.rollback()
+                raise DatabaseError(f"Erro ao substituir dados: {str(e)}")
+
     def execute_query(self, query: str, params: Dict[str, Any] = None) -> pd.DataFrame:
-        """
-        Executa uma query no banco.
-        
-        Args:
-            query: Query SQL
-            params: Parâmetros da query
-        
-        Returns:
-            DataFrame: Resultado da query
-        
-        Raises:
-            DatabaseError: Se houver erro na execução
-        """
         try:
             with self._engine.connect() as conn:
                 result = conn.execute(text(query), params or {})
@@ -139,9 +130,7 @@ class Database:
             raise DatabaseError(f"Erro ao executar query: {str(e)}")
     
     def __enter__(self):
-        """Permite uso do contexto 'with'."""
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Fecha a conexão ao sair do contexto."""
         self._engine.dispose()

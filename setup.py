@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="autosinapi",
-    version="0.1",
+    # A versão agora é gerenciada pelo setuptools_scm
     packages=find_packages(where="."),
     package_dir={"": "."},
     install_requires=[
