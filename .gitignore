@@ -1,4 +1,11 @@
 # =========================
+# Arquivos de build e distribuição
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
 # Arquivos sensíveis e temporários
 # =========================
 
@@ -52,8 +59,10 @@
 # Ignora arquivos compactados
 **/*.zip
 
-# Ignora arquivos JSON
+# Ignora arquivos JSON, exceto os de exemplo
 **/*.json
+!**/*.example.json
+
 
 # =========================
 # Exceções (remova o ! se não quiser versionar)
