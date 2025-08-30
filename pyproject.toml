@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "autosinapi"
-version = "0.1"
+dynamic = ["version"]
 authors = [
     {name = "Lucas Antonio M. Pereira", email = "contato@arqlamp.com"},
 ]
@@ -28,6 +28,9 @@ test = [
     "pytest-mock>=3.10.0",
     "pytest-cov>=4.0.0",
 ]
+
+[tool.setuptools_scm]
+# Habilita o uso do setuptools_scm
 
 [tool.pytest.ini_options]
 minversion = "7.0"
