@@ -11,6 +11,7 @@ dist/
 
 # Ignora todos os arquivos com extensão .secrets em qualquer diretório
 **/*.secrets
+**/*.env
 
 # Ignora arquivo .secrets na raiz
 .secrets
@@ -92,3 +93,4 @@ Thumbs.db
 
 # Ignora diretórios de downloads
 downloads/
+tools/docker/.env

@@ -1,28 +1,23 @@
 """
-Exceções customizadas para o AutoSINAPI Toolkit.
-Todas as exceções são derivadas de AutoSINAPIError para facilitar o tratamento específico.
+Módulo de exceções customizadas para o AutoSINAPI.
 """
 
-class AutoSINAPIError(Exception):
+class AutoSinapiError(Exception):
     """Exceção base para todos os erros do AutoSINAPI."""
     pass
 
-class DownloadError(AutoSINAPIError):
-    """Exceção levantada quando há problemas no download de arquivos SINAPI."""
+class ConfigurationError(AutoSinapiError):
+    """Erro relacionado a configurações inválidas."""
     pass
 
-class ProcessingError(AutoSINAPIError):
-    """Exceção levantada quando há problemas no processamento das planilhas."""
+class DownloadError(AutoSinapiError):
+    """Erro durante o download de arquivos."""
     pass
 
-class DatabaseError(AutoSINAPIError):
-    """Exceção levantada quando há problemas com operações no banco de dados."""
+class ProcessingError(AutoSinapiError):
+    """Erro durante o processamento dos dados."""
     pass
 
-class ConfigurationError(AutoSINAPIError):
-    """Exceção levantada quando há problemas com as configurações."""
-    pass
-
-class ValidationError(AutoSINAPIError):
-    """Exceção levantada quando há problemas com validação de dados."""
+class DatabaseError(AutoSinapiError):
+    """Erro relacionado a operações de banco de dados."""
     pass
