@@ -133,23 +133,77 @@ class Pipeline:
 
             extraction_path = self._unzip_file(local_zip_path)
             
-            # Encontra o arquivo .xlsx dentro da pasta extraída
-            excel_files = list(extraction_path.glob('*.xlsx'))
-            if not excel_files:
+            all_excel_files = list(extraction_path.glob('*.xlsx'))
+            if not all_excel_files:
                 raise FileNotFoundError(f"Nenhum arquivo .xlsx encontrado em {extraction_path}")
-            excel_file_path = excel_files[0]
 
             processor = Processor(config.sinapi_config)
-            processed_data = processor.process(str(excel_file_path))
-            logging.info(f"Processamento concluído. {len(processed_data)} registros processados.")
-
             db = Database(config.db_config)
-            db.create_tables()
-            table_name = f"sinapi_{ano}_{mes}"
-            
-            policy = self.sinapi_config['duplicate_policy']
-            db.save_data(processed_data, table_name, policy, ano, mes)
-            logging.info(f"Dados salvos com sucesso na tabela '{table_name}' com a política '{policy}'.")
+            db.create_tables() # Cria as tabelas uma única vez
+
+            processed_any_file = False
+
+            # Processar Manutenções primeiro (se existir)
+            manutencoes_file_path = None
+            for f in all_excel_files:
+                if "Manutenções" in f.name:
+                    manutencoes_file_path = f
+                    break
+
+            if manutencoes_file_path:
+                logging.info(f"Processando arquivo de Manutenções: {manutencoes_file_path.name}")
+                processor.process_manutencoes(str(manutencoes_file_path), db._engine)
+                processed_any_file = True
+
+            # Processar Referência (preços, custos, insumos, composições e estrutura)
+            referencia_file_path = None
+            for f in all_excel_files:
+                if "Referência" in f.name:
+                    referencia_file_path = f
+                    break
+
+            if referencia_file_path:
+                logging.info(f"Processando arquivo de Referência: {referencia_file_path.name}")
+                
+                # Processar preços e custos mensais (SINAPI_mao_de_obra e SINAPI_Referência sheets)
+                processor.process_precos_e_custos(str(referencia_file_path), db._engine)
+                logging.info("Preços e custos mensais processados.")
+
+                # Processar dados de catálogo de Insumos (assumindo sheet "Insumos")
+                try:
+                    insumos_df = processor.process(str(referencia_file_path), sheet_name="Insumos")
+                    if not insumos_df.empty:
+                        # A política de duplicatas para catálogos deve ser UPSERT. 
+                        # Assumindo que 'substituir' aqui significa um UPSERT ou que a tabela é limpa antes.
+                        # O DataModel.md sugere UPSERT para catálogos.
+                        db.save_data(insumos_df, "insumos", "substituir", ano, mes) 
+                        logging.info(f"Dados de insumos (catálogo) salvos: {len(insumos_df)} registros.")
+                except Exception as e:
+                    logging.warning(f"Não foi possível processar a aba 'Insumos' do arquivo de Referência: {e}")
+
+                # Processar dados de catálogo de Composições (assumindo sheet "Composicoes")
+                try:
+                    composicoes_df = processor.process(str(referencia_file_path), sheet_name="Composicoes")
+                    if not composicoes_df.empty:
+                        db.save_data(composicoes_df, "composicoes", "substituir", ano, mes) 
+                        logging.info(f"Dados de composições (catálogo) salvos: {len(composicoes_df)} registros.")
+                except Exception as e:
+                    logging.warning(f"Não foi possível processar a aba 'Composicoes' do arquivo de Referência: {e}")
+
+                # Processar composicao_itens (estrutura analítica) - assumindo sheet "Analítico"
+                try:
+                    # O método process_composicao_itens já lida com a leitura e salvamento no DB
+                    processor.process_composicao_itens(str(referencia_file_path), db._engine)
+                    logging.info(f"Dados de composicao_itens (estrutura) salvos.")
+                except Exception as e:
+                    logging.warning(f"Não foi possível processar a aba 'Analítico' do arquivo de Referência para composicao_itens: {e}")
+
+                processed_any_file = True
+
+            if not processed_any_file:
+                logging.warning("Nenhum arquivo .xlsx reconhecido foi processado. Verifique os nomes dos arquivos e as abas.")
+
+            logging.info("Processamento de arquivos concluído.")
 
             logging.info("Pipeline AutoSINAPI concluído com sucesso!")
 
