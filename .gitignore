@@ -94,3 +94,4 @@ Thumbs.db
 # Ignora diretórios de downloads
 downloads/
 tools/docker/.env
+AutoSINAPI.code-workspace
