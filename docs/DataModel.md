@@ -180,7 +180,7 @@ Esta fase processa o arquivo principal do SINAPI, operando sobre catálogos cujo
 1.  **Extração:**
 
       * Carregar as planilhas de referência (`ISD`, `ICD`, `ISE`, `CSD`, `CCD`, `CSE`, `Analítico`) do arquivo `SINAPI_Referência_AAAA_MM.xlsx`.
-      * **Atenção:** O cabeçalho dos dados começa na linha 9, portanto, use `header=8`.
+      * **Atenção:** O cabeçalho dos dados começa na linha 9, portanto, use `header=9`.
 
 2.  **Transformação:**
 

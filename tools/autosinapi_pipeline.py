@@ -147,10 +147,14 @@ class Pipeline:
         );
         """
         try:
-            db.execute_non_query(sql_update.format(table="insumos", item_type="INSUMO"))
-            self.logger.info("Status do catálogo de insumos sincronizado.")
-            db.execute_non_query(sql_update.format(table="composicoes", item_type="COMPOSICAO"))
-            self.logger.info("Status do catálogo de composições sincronizado.")
+            # Captura o número de linhas afetadas e o adiciona ao log
+            num_insumos_updated = db.execute_non_query(sql_update.format(table="insumos", item_type="INSUMO"))
+            self.logger.info(f"Status do catálogo de insumos sincronizado. Itens desativados: {num_insumos_updated}")
+            
+            # Faz o mesmo para as composições
+            num_composicoes_updated = db.execute_non_query(sql_update.format(table="composicoes", item_type="COMPOSICAO"))
+            self.logger.info(f"Status do catálogo de composições sincronizado. Itens desativados: {num_composicoes_updated}")
+
         except Exception as e:
             raise AutoSinapiError(f"Erro ao sincronizar status dos catálogos: {e}")
 
@@ -158,6 +162,7 @@ class Pipeline:
         """Executa o pipeline de ETL do SINAPI seguindo o DataModel."""
         self.logger.info("Iniciando pipeline AutoSINAPI...")
         try:
+            # ... (toda a parte inicial de configuração, download e Fases 1 e 2 permanece a mesma) ...
             config = Config(db_config=self.db_config, sinapi_config=self.sinapi_config, mode='local')
             self.logger.info("Configuração validada com sucesso.")
 
@@ -192,6 +197,7 @@ class Pipeline:
             manutencoes_file_path = next((f for f in all_excel_files if "Manuten" in f.name), None)
             referencia_file_path = next((f for f in all_excel_files if "Referência" in f.name), None)
 
+            # FASE 1: Processamento de Manutenções
             if manutencoes_file_path:
                 self.logger.info(f"Iniciando Fase 1: Processamento de Manutenções ({manutencoes_file_path.name})")
                 manutencoes_df = processor.process_manutencoes(str(manutencoes_file_path))
@@ -200,45 +206,127 @@ class Pipeline:
             else:
                 self.logger.warning("Arquivo de Manutenções não encontrado. Pulando Fases 1 e 2.")
 
+            # FASE 2: Sincronização de Status
             if manutencoes_file_path:
                 self._sync_catalog_status(db)
 
-            if referencia_file_path:
-                self.logger.info(f"Iniciando Fase 3: Processamento do Arquivo de Referência ({referencia_file_path.name})")
-                
-                self.logger.info("Processando estrutura de composições (Analítico)...")
-                structure_dfs = processor.process_composicao_itens(str(referencia_file_path))
-                db.truncate_table('composicao_insumos')
-                db.truncate_table('composicao_subcomposicoes')
-                db.save_data(structure_dfs['composicao_insumos'], 'composicao_insumos', policy='append')
-                db.save_data(structure_dfs['composicao_subcomposicoes'], 'composicao_subcomposicoes', policy='append')
-                self.logger.info("Estrutura de composições carregada com sucesso.")
+            # FASE 3: Processamento do Arquivo de Referência
+            if not referencia_file_path:
+                self.logger.warning("Arquivo de Referência não encontrado. Pulando Fase 3.")
+                return
 
-                self.logger.info("Processando catálogos e dados mensais (preços/custos)...")
-                processed_data = processor.process_catalogo_e_precos(str(referencia_file_path))
+            self.logger.info(f"Iniciando Fase 3: Processamento do Arquivo de Referência ({referencia_file_path.name})")
+            
+            # 1. Processar TODOS os dados de referência em memória PRIMEIRO
+            self.logger.info("Processando catálogos, dados mensais e estrutura de composições...")
+            processed_data = processor.process_catalogo_e_precos(str(referencia_file_path))
+            structure_dfs = processor.process_composicao_itens(str(referencia_file_path))
 
-                if 'precos_insumos_mensal' in processed_data:
-                    processed_data['precos_insumos_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
-                if 'custos_composicoes_mensal' in processed_data:
-                    processed_data['custos_composicoes_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
-
-                for table_name, df in processed_data.items():
-                    if table_name in ['insumos', 'composicoes']:
-                        db.save_data(df, table_name, policy='upsert', pk_columns=['codigo'])
-                    else:
-                        db.save_data(df, table_name, policy='append')
-                self.logger.info("Catálogos e dados mensais carregados com sucesso.")
-
+            # 2. Garantir a existência de TODOS os itens da estrutura nos catálogos
+            
+            # 2.1. Lidar com INSUMOS ausentes usando os detalhes da estrutura
+            if 'insumos' in processed_data:
+                existing_insumos_df = processed_data['insumos']
             else:
-                self.logger.warning(f"Arquivo de Referência ({referencia_file_path.name}) não encontrado. Pulando Fase 3.")
+                existing_insumos_df = pd.DataFrame(columns=['codigo', 'descricao', 'unidade'])
 
+            all_child_insumo_codes = structure_dfs['composicao_insumos']['insumo_filho_codigo'].unique()
+            existing_insumo_codes_set = set(existing_insumos_df['codigo'].values)
+            missing_insumo_codes = [code for code in all_child_insumo_codes if code not in existing_insumo_codes_set]
+
+            if missing_insumo_codes:
+                self.logger.warning(f"Encontrados {len(missing_insumo_codes)} insumos na estrutura que não estão no catálogo. Criando placeholders com detalhes...")
+                
+                # Pega os detalhes dos insumos ausentes do novo DataFrame 'child_item_details'
+                insumo_details_df = structure_dfs['child_item_details'][
+                    (structure_dfs['child_item_details']['codigo'].isin(missing_insumo_codes)) &
+                    (structure_dfs['child_item_details']['tipo'] == 'INSUMO')
+                ].drop_duplicates(subset=['codigo']).set_index('codigo')
+
+                missing_insumos_data = {
+                    'codigo': missing_insumo_codes,
+                    'descricao': [insumo_details_df.loc[code, 'descricao'] if code in insumo_details_df.index else f"INSUMO_DESCONHECIDO_{code}" for code in missing_insumo_codes],
+                    'unidade': [insumo_details_df.loc[code, 'unidade'] if code in insumo_details_df.index else "UN" for code in missing_insumo_codes]
+                }
+                missing_insumos_df = pd.DataFrame(missing_insumos_data)
+                processed_data['insumos'] = pd.concat([existing_insumos_df, missing_insumos_df], ignore_index=True)
+
+            # 2.2. Lidar com COMPOSIÇÕES (pais e filhas) ausentes
+            if 'composicoes' in processed_data:
+                existing_composicoes_df = processed_data['composicoes']
+            else:
+                existing_composicoes_df = pd.DataFrame(columns=['codigo', 'descricao', 'unidade'])
+
+            parent_codes = structure_dfs['parent_composicoes_details'].set_index('codigo')
+            child_codes = structure_dfs['child_item_details'][
+                structure_dfs['child_item_details']['tipo'] == 'COMPOSICAO'
+            ].drop_duplicates(subset=['codigo']).set_index('codigo')
+            
+            all_composicao_codes_in_structure = set(parent_codes.index) | set(child_codes.index)
+            existing_composicao_codes_set = set(existing_composicoes_df['codigo'].values)
+            missing_composicao_codes = list(all_composicao_codes_in_structure - existing_composicao_codes_set)
+
+            if missing_composicao_codes:
+                self.logger.warning(f"Encontradas {len(missing_composicao_codes)} composições (pai/filha) na estrutura que não estão no catálogo. Criando placeholders com detalhes...")
+                
+                def get_detail(code, column):
+                    if code in parent_codes.index: return parent_codes.loc[code, column]
+                    if code in child_codes.index: return child_codes.loc[code, column]
+                    return f"COMPOSICAO_DESCONHECIDA_{code}" if column == 'descricao' else 'UN'
+
+                missing_composicoes_df = pd.DataFrame({
+                    'codigo': missing_composicao_codes,
+                    'descricao': [get_detail(code, 'descricao') for code in missing_composicao_codes],
+                    'unidade': [get_detail(code, 'unidade') for code in missing_composicao_codes]
+                })
+                processed_data['composicoes'] = pd.concat([existing_composicoes_df, missing_composicoes_df], ignore_index=True)
+
+            # 3. Salvar no banco NA ORDEM CORRETA...
+            self.logger.info("Iniciando carga de dados no banco de dados na ordem correta...")
+
+            # 3.1. Carregar Catálogos (UPSERT) - Agora completos com todos os placeholders
+            if 'insumos' in processed_data and not processed_data['insumos'].empty:
+                db.save_data(processed_data['insumos'], 'insumos', policy='upsert', pk_columns=['codigo'])
+                self.logger.info("Catálogo de insumos (incluindo placeholders) carregado.")
+            if 'composicoes' in processed_data and not processed_data['composicoes'].empty:
+                db.save_data(processed_data['composicoes'], 'composicoes', policy='upsert', pk_columns=['codigo'])
+                self.logger.info("Catálogo de composições (incluindo placeholders) carregado.")
+            
+            # 3.2. Recarregar Estrutura (TRUNCATE/INSERT) - Agora é seguro
+            db.truncate_table('composicao_insumos')
+            db.truncate_table('composicao_subcomposicoes')
+            db.save_data(structure_dfs['composicao_insumos'], 'composicao_insumos', policy='append')
+            db.save_data(structure_dfs['composicao_subcomposicoes'], 'composicao_subcomposicoes', policy='append')
+            self.logger.info("Estrutura de composições carregada com sucesso.")
+
+            # 3.3. Carregar Dados Mensais (APPEND) com Logs Detalhados
+            precos_carregados = False
+            if 'precos_insumos_mensal' in processed_data and not processed_data['precos_insumos_mensal'].empty:
+                processed_data['precos_insumos_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
+                db.save_data(processed_data['precos_insumos_mensal'], 'precos_insumos_mensal', policy='append')
+                precos_carregados = True
+            else:
+                self.logger.warning("Nenhum dado de PREÇOS DE INSUMOS foi encontrado ou processado. Pulando esta etapa.")
+
+            custos_carregados = False
+            if 'custos_composicoes_mensal' in processed_data and not processed_data['custos_composicoes_mensal'].empty:
+                processed_data['custos_composicoes_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
+                db.save_data(processed_data['custos_composicoes_mensal'], 'custos_composicoes_mensal', policy='append')
+                custos_carregados = True
+            else:
+                self.logger.warning("Nenhum dado de CUSTOS DE COMPOSIÇÕES foi encontrado ou processado. Pulando esta etapa.")
+
+            if precos_carregados or custos_carregados:
+                self.logger.info("Dados mensais (preços/custos) carregados com sucesso.")
+            else:
+                self.logger.warning("Nenhuma informação de preços ou custos foi carregada nesta execução.")
+            
             self.logger.info("Pipeline AutoSINAPI concluído com sucesso!")
 
         except AutoSinapiError as e:
             self.logger.error(f"Erro no pipeline AutoSINAPI: {e}")
         except Exception as e:
             self.logger.error(f"Ocorreu um erro inesperado: {e}", exc_info=True)
-
 
 def main():
     parser = argparse.ArgumentParser(description="Pipeline de ETL para dados do SINAPI.")
@@ -251,6 +339,12 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true', help='Habilita logging em nível DEBUG')
     args = parser.parse_args()
 
+    # --- ALTERAÇÃO AQUI ---
+    # Força o nível de logging para DEBUG para esta execução de diagnóstico
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.info("--- MODO DE DEPURAÇÃO DE COLUNAS ATIVADO ---")
+
+    # A flag --verbose ainda funciona se você quiser usá-la no futuro
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
