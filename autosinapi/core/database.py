@@ -1,5 +1,16 @@
 """
-Módulo responsável pelas operações de banco de dados.
+Módulo de Banco de Dados do AutoSINAPI.
+
+Este módulo encapsula toda a interação com o banco de dados PostgreSQL.
+Ele é responsável por:
+- Criar a conexão com o banco de dados usando SQLAlchemy.
+- Definir e criar o esquema de tabelas e views (DDL).
+- Salvar os dados processados (DataFrames) nas tabelas, com diferentes
+  políticas de inserção (append, upsert, replace).
+- Executar queries de consulta e de modificação de forma segura.
+
+A classe `Database` abstrai a complexidade do SQL e do SQLAlchemy, fornecendo
+uma interface clara e de alto nível para o restante da aplicação.
 """
 import logging
 from typing import Dict, Any

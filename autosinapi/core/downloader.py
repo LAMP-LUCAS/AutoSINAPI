@@ -1,5 +1,13 @@
 """
-Módulo responsável pelo download e gerenciamento dos arquivos SINAPI.
+Módulo de Download do AutoSINAPI.
+
+Este módulo é responsável por obter os arquivos de dados do SINAPI. Ele abstrai
+a origem dos dados, que pode ser tanto um download direto do site da Caixa
+Econômica Federal quanto um arquivo local fornecido pelo usuário.
+
+A classe `Downloader` gerencia a sessão HTTP, constrói as URLs de download
+com base nas configurações e trata os erros de rede, garantindo que o pipeline
+receba um stream de bytes do arquivo a ser processado.
 """
 from typing import Dict, Optional, BinaryIO, Union
 import requests
