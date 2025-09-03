@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "autosinapi"
 dynamic = ["version"]
 authors = [
-    {name = "Lucas Antonio M. Pereira", email = "contato@arqlamp.com"},
+    {name = "Lucas Antonio M. Pereira", email = "contato@mundoaec.com"},
 ]
 description = "Toolkit para automação do SINAPI"
 readme = "README.md"
