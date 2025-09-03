@@ -1,3 +1,16 @@
+"""
+Módulo de Processamento do AutoSINAPI.
+
+Este módulo é responsável por todas as etapas de transformação e limpeza dos dados
+brutos do SINAPI, obtidos pelo módulo `downloader`. Ele lida com a leitura de
+arquivos Excel, padronização de nomes de colunas, tratamento de valores ausentes,
+e a estruturação dos dados em DataFrames do Pandas para que estejam prontos
+para inserção no banco de dados pelo módulo `database`.
+
+A classe `Processor` encapsula a lógica de negócio para interpretar as planilhas
+do SINAPI, extrair informações relevantes e aplicar as regras de negócio
+necessárias para a consistência dos dados.
+"""
 import pandas as pd
 from typing import Dict, Any, List
 import logging

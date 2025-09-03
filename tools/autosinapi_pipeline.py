@@ -1,3 +1,23 @@
+"""
+autosinapi_pipeline.py: Script Principal para Execução do Pipeline ETL do AutoSINAPI.
+
+Este script atua como o orquestrador central para o processo de Extração,
+Transformação e Carga (ETL) dos dados do SINAPI. Ele é responsável por:
+
+1.  **Configuração:** Carregar as configurações de execução (ano, mês, tipo de
+    caderno, etc.) a partir de um arquivo JSON ou variáveis de ambiente.
+2.  **Download:** Utilizar o módulo `autosinapi.core.downloader` para obter
+    os arquivos brutos do SINAPI.
+3.  **Processamento:** Empregar o módulo `autosinapi.core.processor` para
+    transformar e limpar os dados brutos em um formato estruturado.
+4.  **Carga:** Usar o módulo `autosinapi.core.database` para carregar os dados
+    processados no banco de dados PostgreSQL.
+5.  **Logging:** Configurar e gerenciar o sistema de logging para registrar
+    o progresso e quaisquer erros durante a execução do pipeline.
+
+Este script suporta diferentes modos de operação (local e servidor) e é a
+interface principal para a execução do AutoSINAPI como uma ferramenta CLI.
+"""
 import json
 import logging
 import argparse

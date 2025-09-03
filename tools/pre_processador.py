@@ -1,3 +1,16 @@
+"""
+pre_processador.py: Script para Pré-processamento de Planilhas SINAPI.
+
+Este script é responsável por pré-processar planilhas específicas dos arquivos
+Excel do SINAPI, convertendo-as para o formato CSV. O objetivo principal é
+garantir que os dados, especialmente aqueles que contêm fórmulas, sejam lidos
+como texto simples, evitando problemas de interpretação e garantindo a
+integridade dos dados antes do processamento principal pelo `Processor`.
+
+Ele identifica as planilhas necessárias, lê o conteúdo do Excel e salva as
+informações em arquivos CSV temporários, que serão posteriormente consumidos
+pelo pipeline ETL do AutoSINAPI.
+"""
 import pandas as pd
 import os
 import logging

@@ -1,6 +1,12 @@
 """
 Módulo de configuração do AutoSINAPI.
-Responsável por validar e gerenciar as configurações do sistema.
+
+Este módulo define a classe `Config`, responsável por centralizar, validar e gerenciar
+todas as configurações necessárias para a execução do pipeline de ETL.
+
+A classe garante que todas as chaves obrigatórias para a conexão com o banco de dados
+e para os parâmetros do SINAPI sejam fornecidas, levantando um erro claro em caso de
+configurações ausentes.
 """
 from typing import Dict, Any
 from .exceptions import ConfigurationError
