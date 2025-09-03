@@ -1,0 +1,20 @@
+# Ignora o ambiente virtual
+venv/
+
+# Ignora arquivos de cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignora arquivos de cache do pytest
+.pytest_cache/
+
+# Ignora arquivos de build do setuptools
+build/
+dist/
+*.egg-info/
+
+# Ignora arquivos de configuração local
+.env
+sql_access.secrets

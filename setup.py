@@ -12,6 +12,7 @@ setup(
         'requests',
         'setuptools',
         'sqlalchemy',
+        'psycopg2-binary',  # Driver para PostgreSQL
         'tqdm',
         'typing',
         'pytest>=7.0.0',
