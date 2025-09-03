@@ -1,6 +1,6 @@
-# Padrões de Nomenclatura do Projeto AutoSINAPI
+# Padrões de Contribuição do Projeto AutoSINAPI
 
-Este documento define as convenções de nomenclatura a serem seguidas no desenvolvimento do projeto **AutoSINAPI**, garantindo consistência, legibilidade e manutenibilidade do código.
+Este documento define as convenções de contribuição e nomenclatura a serem seguidas no desenvolvimento do projeto **AutoSINAPI**, garantindo consistência, legibilidade e manutenibilidade do código.
 
 ---
 
@@ -8,27 +8,37 @@ Este documento define as convenções de nomenclatura a serem seguidas no desenv
 
 O versionamento do projeto segue o padrão Semantic Versioning 2.0.0. O formato da versão é `MAJOR.MINOR.PATCH`.
 
-- **MAJOR**: Incrementado para mudanças incompatíveis com versões anteriores (breaking changes).
-- **MINOR**: Incrementado para adição de novas funcionalidades de forma retrocompatível.
-- **PATCH**: Incrementado para correções de bugs de forma retrocompatível.
+-   **MAJOR**: Incrementado para mudanças incompatíveis com versões anteriores (breaking changes).
+-   **MINOR**: Incrementado para adição de novas funcionalidades de forma retrocompatível.
+-   **PATCH**: Incrementado para correções de bugs de forma retrocompatível.
+
+### Regra Especial para Versões Iniciais (0.x.y)
+
+Enquanto o projeto estiver na versão Major `0`, a API é considerada instável. Neste estágio:
+-   Mudanças que quebram a compatibilidade (`breaking changes`) incrementam a versão **MINOR** (ex: de `v0.1.0` para `v0.2.0`).
+-   Novas funcionalidades ou correções de bugs que **não** quebram a compatibilidade incrementam a **PATCH** (ex: de `v0.1.0` para `v0.1.1`).
+
+A transição para a versão `1.0.0` marcará o primeiro lançamento estável do projeto.
 
 ### Versões de Pré-lançamento (Alpha/Beta)
 
-Para versões que não estão prontas para produção, como fases de teste alfa e beta, utilizamos identificadores de pré-lançamento.
+Para versões que não estão prontas para produção, como fases de teste alfa e beta, utilizamos identificadores de pré-lançamento. O versionamento **não** recomeça após o identificador.
 
-- **Alpha**: Versão em desenvolvimento inicial, potencialmente instável e para testes internos. Formato: `MAJOR.MINOR.PATCH-alpha.N` (ex: `1.2.0-alpha.1` ou `0.0.1-alpha.1`).
-- **Beta**: Versão com funcionalidades completas, em fase de testes para um público restrito. Formato: `MAJOR.MINOR.PATCH-beta.N` (ex: `1.2.0-beta.1` ou `0.0.1-beta.1`).
+-   **Formato**: `MAJOR.MINOR.PATCH-identificador.N` (ex: `0.2.0-alpha.1`).
+-   **Alpha**: Versão em desenvolvimento inicial, potencialmente instável e para testes internos. Formato: `MAJOR.MINOR.PATCH-alpha.N` (ex: `1.2.0-alpha.1` ou `0.0.1-alpha.1`).
+-   **Beta**: Versão com funcionalidades completas, em fase de testes para um público restrito. Formato: `MAJOR.MINOR.PATCH-beta.N` (ex: `1.2.0-beta.1` ou `0.0.1-beta.1`).
 
 O `N` é um número sequencial que se inicia em `1` para cada nova build de pré-lançamento.
 
 **Exemplos:**
-
-- `0.0.1-alpha.1`: Pré-lançamento inicial.
-- `0.0.1-beta.1`: Pré-lançamento de testes.
-- `1.0.0`: Lançamento inicial.
-- `1.1.0`: Adição de suporte para um novo formato de planilha SINAPI (funcionalidade nova).
-- `1.1.1`: Correção de um bug no processamento de dados de insumos (correção de bug).
-- `2.0.0`: Mudança na estrutura do banco de dados que exige migração manual (breaking change).
+-   `v0.1.0-alpha.1`: Primeira build de testes para a versão `0.1.0`.
+-   `v0.1.0-alpha.2`: Segunda build de testes para a versão `0.1.0`.
+-   `v0.2.0-alpha.1`: Primeira build de testes para a versão `0.2.0`, que inclui breaking changes em relação à `v0.1.x`.
+-   `v0.1.0-beta.1`: Pré-lançamento de testes para comunidade.
+-   `v1.0.0`: O primeiro lançamento estável.
+-   `v1.1.0`: Adição de suporte para um novo formato de planilha SINAPI (funcionalidade nova).
+-   `v1.1.1`: Correção de um bug no processamento de dados de insumos (correção de bug).
+-   `v2.0.0`: Mudança na estrutura do banco de dados que exige migração manual (breaking change).
 
 ---
 
@@ -37,20 +47,28 @@ O `N` é um número sequencial que se inicia em `1` para cada nova build de pré
 Adotamos um fluxo de trabalho baseado no Git Flow simplificado para organizar o desenvolvimento.
 
 - **`main`**: Contém o código estável e de produção. Apenas merges de `release` ou `hotfix` são permitidos.
+
 - **`develop`**: Branch principal de desenvolvimento. Contém as últimas funcionalidades e correções que serão incluídas na próxima versão.
+
 - **`feature/<nome-da-feature>`**: Para o desenvolvimento de novas funcionalidades.
   - Criada a partir de `develop`.
   - Exemplo: `feature/processar-planilha-insumos` ou `postgres_data-define` para features mais complexas.
+  - Após a conclusão, deve ser mesclada em `develop`.
+
 - **`fix/<nome-da-correcao>`**: Para correções de bugs não críticos.
   - Criada a partir de `develop`.
   - Exemplo: `fix/ajuste-parser-valor-monetario`
+  - Após a conclusão, deve ser mesclada em `develop`.
+
 - **`hotfix/<descricao-curta>`**: Para correções críticas em produção.
   - Criada a partir de `main`.
   - Após a conclusão, deve ser mesclada em `main` e `develop`.
   - Exemplo: `hotfix/permissao-acesso-negada`
+
 - **`release/<versao>`**: Para preparar uma nova versão de produção (testes finais, atualização de documentação).
   - Criada a partir de `develop`.
   - Exemplo: `release/v1.2.0`
+  - Após a conclusão, deve ser mesclada em `main` e `develop`.
 
 ---
 
@@ -109,96 +127,79 @@ Para garantir um desenvolvimento organizado, eficiente e com alta qualidade, seg
     *   Enderece quaisquer comentários ou solicitações de alteração.
     *   Após a aprovação, a PR será mesclada na branch de destino (`develop` ou `main`).
 
-### 4.2. Gerenciamento de Releases
+### 4.2. Gerenciamento de Releases (Novo Fluxo)
 
-O processo de release é automatizado para garantir consistência e agilidade.
+O processo de release é **semi-automatizado** para combinar a eficiência da automação com o controle manual da comunicação. Um rascunho de release é atualizado continuamente e a publicação final é feita manualmente.
 
-1.  **Preparação da Release (Branch `release`):**
-    *   Quando um conjunto de funcionalidades e correções na branch `develop` estiver pronto para ser lançado, crie uma branch `release/<versao>` a partir de `develop`.
-    *   Nesta branch, realize apenas as últimas verificações, atualizações de documentação (ex: `CHANGELOG.md` se houver) e ajustes finais.
+1.  **Desenvolvimento e Atualização Automática do Rascunho:**
+    * Durante o ciclo de desenvolvimento, cada vez que um Pull Request é mesclado na branch `develop`, a automação (`.github/workflows/draft-release.yml`) atualiza um **rascunho de release** na página de "Releases" do GitHub, categorizando as mudanças (`feat`, `fix`, etc.) automaticamente.
 
-2.  **Criação da Tag de Versão:**
-    *   Após a branch `release` estar pronta, crie uma tag de versão seguindo o [Versionamento Semântico](#1-versionamento-semântico-semver) (ex: `v1.0.0`, `v1.1.0`).
-    *   **Importante:** O push desta tag para o repositório irá automaticamente disparar o fluxo de trabalho de release.
+2.  **Preparação para Lançamento (Branch `release`):**
+    * Quando um conjunto de funcionalidades em `develop` está pronto para ser lançado, crie uma branch `release/<versao>` (ex: `release/v0.2.0-alpha.1`).
+    * Nesta branch, realize apenas ajustes finais, como atualização do `CHANGELOG.md` e da documentação. Após a conclusão, mescle-a em `main` e `develop`.
 
-3.  **Release Automatizada:**
-    *   O fluxo de trabalho `.github/workflows/release.yml` será executado automaticamente.
-    *   Ele construirá o pacote Python, criará um novo release no GitHub (associado à tag) e publicará o pacote no PyPI.
+3.  **Edição e Publicação da Release (Passo Manual Crucial):**
+    * Com o código final em `main`, navegue até a seção **"Releases"** do repositório no GitHub.
+    * Encontre o rascunho que foi preparado automaticamente (ele terá o título "Draft").
+    * Clique em "Edit". No formulário de edição:
+        * **Crie a tag:** No campo "Choose a tag", digite a nova tag de versão (ex: `v0.2.0-alpha.1`).
+        * **Escreva a "Copy":** Edite o título e o corpo da release, adicionando a sua comunicação, explicando o valor das mudanças e orientando os usuários.
+        * **Publique:** Clique em **"Publish release"**.
 
-4.  **Merge Pós-Release:**
-    *   Após a release ser concluída com sucesso, a branch `release` deve ser mesclada de volta em `main` (para registrar a versão final) e em `develop` (para garantir que quaisquer ajustes feitos na branch `release` sejam propagados para o desenvolvimento contínuo).
+4.  **Construção e Upload Automatizados:**
+    * O ato de publicar a release no passo anterior **cria e envia a tag** para o repositório.
+    * Este push da tag dispara o segundo workflow (`.github/workflows/release.yml`), que irá construir os pacotes Python (`.whl` e `.tar.gz`) e anexá-los à release que você acabou de publicar. A publicação no PyPI permanece desativada por padrão.
 
 ---
 
 ## 5. Ferramentas de Automação e Templates
 
-Para otimizar o fluxo de trabalho e garantir a padronização, utilizamos as seguintes ferramentas e templates:
+Para otimizar o fluxo de trabalho e garantir a padronização, utilizamos as seguintes ferramentas e templates no diretório `.github/` do projeto.
 
-### 5.1. `.github/workflows/release.yml`
+### 5.1. `release-drafter.yml` e `workflows/draft-release.yml`
 
-Este arquivo define o fluxo de trabalho de **Release Automatizada** do projeto. Ele é um script de GitHub Actions que é executado sempre que uma nova tag de versão (ex: `v1.0.0`) é enviada para o repositório.
+-   **Finalidade:** Gerenciamento automático do rascunho de release.
+-   **O que faz:**
+    * A cada merge na branch `develop`, a action `Release Drafter` é executada.
+    * Ela analisa os commits do Pull Request mesclado.
+    * Atualiza um único rascunho de release ("Draft") na página de "Releases", organizando as mudanças em categorias (`Novas Funcionalidades`, `Correções de Bugs`, etc.) com base nos padrões de Conventional Commits.
+-   **Benefícios:**
+    * Automatiza a coleta e organização do changelog, garantindo que nenhuma mudança seja esquecida.
+    * Prepara 90% do trabalho da release antes mesmo da decisão de lançar, economizando tempo e esforço manual.
+    * Mantém um panorama sempre atualizado do que entrará na próxima versão.
 
-**O que ele faz:**
-*   **Construção do Pacote:** Compila o código-fonte Python em pacotes distribuíveis (source distribution e wheel).
-*   **Criação de Release no GitHub:** Gera um novo lançamento na página de Releases do GitHub, associado à tag de versão.
-*   **Publicação no PyPI:** Faz o upload dos pacotes construídos para o Python Package Index (PyPI), tornando-os disponíveis para instalação via `pip`.
+### 5.2. `workflows/release.yml`
 
-**Benefícios:** Garante que cada nova versão seja lançada de forma consistente, reduzindo erros manuais e acelerando o processo de distribuição.
+-   **Finalidade:** Construção e publicação dos pacotes (artefatos) da release.
+-   **O que faz:**
+    * É disparado **apenas quando uma nova tag de versão** (ex: `v0.2.0-alpha.1`) é criada e enviada ao repositório.
+    * Constrói os pacotes Python distribuíveis (`.whl` e `.tar.gz`).
+    * Anexa esses pacotes como artefatos à release do GitHub correspondente à tag.
+-   **Benefícios:**
+    * Garante que toda release publicada tenha os pacotes corretos e construídos de forma consistente.
+    * Reduz erros manuais no processo de build e upload.
 
-### 5.2. `.github/pull_request_template.md`
+### 5.3. `pull_request_template.md`
 
-Este arquivo é um **template padrão para Pull Requests (PRs)**. Quando um desenvolvedor cria uma nova Pull Request no GitHub, este template é automaticamente preenchido, guiando o desenvolvedor a fornecer as informações essenciais.
-
-**O que ele faz:**
-*   **Padronização:** Garante que todas as PRs sigam uma estrutura consistente.
-*   **Clareza:** Solicita informações cruciais como descrição das mudanças, tipo de alteração, testes realizados, breaking changes, etc.
-*   **Facilita a Revisão:** Ajuda os revisores a entender rapidamente o propósito e o escopo da PR, agilizando o processo de code review.
-*   **Checklist:** Inclui um checklist para que o desenvolvedor possa verificar se todos os requisitos foram atendidos antes de submeter a PR.
-
-**Benefícios:** Melhora a qualidade das PRs, acelera o processo de revisão e contribui para a manutenção de um histórico de projeto claro e detalhado.
+-   **Finalidade:** Template padrão para a abertura de Pull Requests (PRs).
+-   **O que faz:**
+    * Preenche automaticamente a descrição de uma nova PR com seções pré-definidas.
+    * Guia o contribuidor a fornecer informações essenciais, como a descrição das mudanças, como testar e um checklist de verificação.
+-   **Benefícios:**
+    * Padroniza a comunicação em todas as PRs.
+    * Agiliza o processo de revisão de código, pois os revisores recebem todas as informações de forma clara e estruturada.
+    * Melhora a qualidade geral das contribuições.
 
 ---
 
 ## 6. Nomenclatura no Código
 
+As nomenclaturas devem ser claras e descritivas, refletindo a funcionalidade e o propósito do código.
 
-### 4.1. CSS (Para clientes Frontend)
-
-- **Prefixo**: Todas as classes devem ser prefixadas com `as-` (AutoSINAPI) para evitar conflitos de estilo.
-- **Metodologia**: BEM (Block, Element, Modifier).
-  - `as-bloco`
-  - `as-bloco__elemento`
-  - `as-bloco__elemento--modificador`
-
-**Exemplos:**
-
-- `.as-data-table` (Bloco)
-- `.as-data-table__header` (Elemento)
-- `.as-data-table__row--highlighted` (Modificador)
-
-### 4.2. Chaves de Internacionalização (I18n - se aplicável)
-
-As chaves de tradução devem seguir uma estrutura hierárquica para facilitar a organização.
-
-- **Padrão**: `auto_sinapi.<area>.<subarea_ou_chave>`
-
-**Exemplos:**
-
-- `auto_sinapi.settings.title`
-- `auto_sinapi.dashboard.tables.insumos.title`
-- `auto_sinapi.errors.file_format_invalid`
-
-### 4.3. Python (FastAPI)
+### 6.1 Python (FastAPI)
 
 - **Módulos e Classes**: `PascalCase` (ex: `SinapiParser`, `DatabaseManager`).
 - **Variáveis e Funções**: `snake_case` (ex: `file_data`, `process_spreadsheet`).
 - **Constantes**: `UPPER_SNAKE_CASE` (ex: `API_VERSION`, `DB_CONNECTION_STRING`).
 - **Arquivos**: `snake_case` (ex: `sinapi_parser.py`, `main.py`).
 - **Pacotes**: O código deve ser organizado em pacotes e módulos lógicos (ex: `app.services`, `app.models`, `app.routers`).
-
-### 4.4. JavaScript (Para clientes Frontend)
-
-- **Variáveis e Funções**: `camelCase` (ex: `totalAmount`, `initializeFilters`).
-- **Classes**: `PascalCase` (ex: `ChartManager`).
-- **Constantes**: `UPPER_SNAKE_CASE` (ex: `API_ENDPOINT`).
-- **Nomes de Arquivos**: `kebab-case` ou `snake_case` (ex: `data-table.js` ou `data_table.js`).
