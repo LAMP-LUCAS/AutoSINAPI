@@ -37,23 +37,7 @@ import logging
 from contextlib import contextmanager
 from typing import Dict, Any
 
-# Import the Pipeline class (assuming it's in tools/autosinapi_pipeline.py)
-# We need to be careful with relative imports here.
-# Since autosinapi_pipeline.py is in 'tools' directory, and autosinapi/__init__.py is in 'autosinapi' directory,
-# we need to import it correctly.
-# The user's original call was `autosinapi.run_etl`, implying `run_etl` is part of the `autosinapi` package.
-# So, the Pipeline class should be imported from within the autosinapi package structure.
-# If tools/autosinapi_pipeline.py is meant to be a standalone script, then importing it directly might be problematic.
-# However, the user wants `autosinapi.run_etl` to work.
-# Let's assume for now that 'tools.autosinapi_pipeline' can be imported.
-# If it fails, I'll need to re-evaluate the import strategy.
-try:
-    from tools.autosinapi_pipeline import Pipeline, setup_logging
-except ImportError:
-    # Fallback if tools is not directly in the python path
-    import sys
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tools')))
-    from autosinapi_pipeline import Pipeline, setup_logging
+from .etl_pipeline import PipelineETL, setup_logging
 
 
 # Configure a logger for this module
@@ -86,13 +70,33 @@ def run_etl(db_config: Dict[str, Any], sinapi_config: Dict[str, Any], mode: str 
     """
     # Validate inputs
     if not isinstance(db_config, dict):
-        raise ValueError("db_config deve ser um dicionário.")
+        return {
+            "status": "failed",
+            "message": "Erro de validação: db_config deve ser um dicionário.",
+            "tables_updated": [],
+            "records_inserted": 0
+        }
     if not isinstance(sinapi_config, dict):
-        raise ValueError("sinapi_config deve ser um dicionário.")
+        return {
+            "status": "failed",
+            "message": "Erro de validação: sinapi_config deve ser um dicionário.",
+            "tables_updated": [],
+            "records_inserted": 0
+        }
     if mode not in ['local', 'server']:
-        raise ValueError("mode deve ser 'local' ou 'server'.")
+        return {
+            "status": "failed",
+            "message": "Erro de validação: mode deve ser 'local' ou 'server'.",
+            "tables_updated": [],
+            "records_inserted": 0
+        }
     if log_level.upper() not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
-        raise ValueError(f"log_level inválido: {log_level}. Use 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.")
+        return {
+            "status": "failed",
+            "message": f"Erro de validação: log_level inválido: {log_level}. Use 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'.",
+            "tables_updated": [],
+            "records_inserted": 0
+        }
 
     # Prepare environment variables
     env_vars_to_set = {
@@ -120,11 +124,24 @@ def run_etl(db_config: Dict[str, Any], sinapi_config: Dict[str, Any], mode: str 
 
     try:
         with set_env_vars(env_vars_to_set):
-            logger.info(f"Iniciando execução do pipeline com modo: {mode} e nível de log: {log_level}")
-            pipeline = Pipeline() # Pipeline will read from env vars
-            pipeline.run()
+            logger.info(f"Iniciando execução do pipeline com modo: {mode}"
+                        f"e nível de log: {log_level}")
+            pipeline = PipelineETL() # Pipeline will read from env vars
+            result = pipeline.run()
             logger.info("Pipeline executado com sucesso.")
+            return result
     except Exception as e:
         logger.error(f"Erro ao executar o pipeline: {e}", exc_info=True)
-        raise # Re-raise the exception to indicate task failure
+        # Re-raise the exception to indicate task failure, or return a structured error
+        # based on the user's request for run_etl to return a dictionary on failure.
+        # Since pipeline.run() already returns a dictionary on failure,
+        # this outer exception block should only catch errors *before* pipeline.run() is called
+        # or unexpected errors not caught by pipeline.run().
+        # For consistency, we'll return a structured error here too.
+        return {
+            "status": "failed",
+            "message": f"Erro inesperado antes ou durante a inicialização do pipeline: {e}",
+            "tables_updated": [],
+            "records_inserted": 0
+        }
 

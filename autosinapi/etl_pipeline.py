@@ -29,7 +29,8 @@ from autosinapi.config import Config
 from autosinapi.core.downloader import Downloader
 from autosinapi.core.processor import Processor
 from autosinapi.core.database import Database
-from autosinapi.exceptions import AutoSinapiError
+from autosinapi.exceptions import AutoSinapiError, ConfigurationError, DownloadError, ProcessingError, DatabaseError
+from autosinapi.core.pre_processor import convert_excel_sheets_to_csv
 
 # Configuração do logger principal
 logger = logging.getLogger("autosinapi")
@@ -65,7 +66,7 @@ def setup_logging(debug_mode=False):
     if not debug_mode:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-class Pipeline:
+class PipelineETL:
     def __init__(self, config_path: str = None):
         self.logger = logging.getLogger("autosinapi.pipeline")
         self.config = self._load_config(config_path)
@@ -79,12 +80,12 @@ class Pipeline:
             try:
                 with open(config_path, 'r') as f:
                     return json.load(f)
-            except FileNotFoundError:
+            except FileNotFoundError as e:
                 self.logger.error(f"Arquivo de configuração não encontrado: {config_path}", exc_info=True)
-                raise
-            except json.JSONDecodeError:
+                raise ConfigurationError(f"Arquivo de configuração não encontrado: {config_path}") from e
+            except json.JSONDecodeError as e:
                 self.logger.error(f"Erro ao decodificar o arquivo JSON de configuração: {config_path}", exc_info=True)
-                raise
+                raise ConfigurationError(f"Erro ao decodificar o arquivo JSON de configuração: {config_path}") from e
         else:
             self.logger.info("Carregando configuração a partir de variáveis de ambiente.")
             return {
@@ -102,7 +103,7 @@ class Pipeline:
             required_vars = ["POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD"]
             missing_vars = [v for v in required_vars if not os.getenv(v)]
             if missing_vars:
-                raise AutoSinapiError(
+                raise ConfigurationError(
                     f"Variáveis de ambiente para o banco de dados não encontradas: {missing_vars}. "
                     f"Verifique se o arquivo 'tools/docker/.env' existe e está preenchido corretamente."
                 )
@@ -133,14 +134,20 @@ class Pipeline:
             }
         except Exception as e:
             self.logger.error(f"Erro CRÍTICO ao ler ou processar o arquivo de secrets '{secrets_path}'. Detalhes: {e}", exc_info=True)
-            raise
+            raise ConfigurationError(f"Erro ao ler ou processar o arquivo de secrets '{secrets_path}': {e}") from e
 
     def _get_sinapi_config(self):
         return {
             'state': self.config.get('default_state', 'BR'),
             'year': self.config['default_year'],
             'month': self.config['default_month'],
+             # Esta informação 'type' = 'workbook_type_name' precisa ser verificada com a lógica do DataModel
+             # e dos arquivos reais, pois o Workbook pode não fazer sentido no contexto
+             # refatorado atual, está mantido por enquanto para compatibilidade
+             # e assumimos que o valor padrão é 'REFERENCIA' se não fornecido.
+             # Talvez faça mais sentido definir se é Desonerado, Onerado ou Sem Encargos
             'type': self.config.get('workbook_type_name', 'REFERENCIA'),
+
             'file_format': self.config.get('default_format', 'XLSX'),
             'duplicate_policy': self.config.get('duplicate_policy', 'substituir'),
             'mode': os.getenv('AUTOSINAPI_MODE', 'local') # Add this line
@@ -168,24 +175,25 @@ class Pipeline:
                 zip_ref.extractall(extraction_path)
             self.logger.info("Arquivo descompactado com sucesso.")
             return extraction_path
-        except zipfile.BadZipFile:
+        except zipfile.BadZipFile as e:
             self.logger.error(f"O arquivo '{zip_path.name}' não é um zip válido ou está corrompido.", exc_info=True)
-            raise
+            raise ProcessingError(f"O arquivo '{zip_path.name}' não é um zip válido ou está corrompido.") from e
 
-    def _run_pre_processing(self):
+    def _run_pre_processing(self, referencia_file_path: Path, extraction_path: Path):
         self.logger.info("FASE PRE: Iniciando pré-processamento de planilhas para CSV.")
-        script_path = "tools/pre_processador.py"
+        sheets_to_convert = ['CSD', 'CCD', 'CSE']
+        output_dir = extraction_path.parent / "csv_temp"
+
         try:
-            if not os.path.exists(script_path):
-                raise FileNotFoundError(f"Script de pré-processamento não encontrado em '{script_path}'")
-            
-            result = os.system(f"python {script_path}")
-            if result != 0:
-                raise AutoSinapiError(f"O script de pré-processamento '{script_path}' falhou com código de saída {result}.")
+            convert_excel_sheets_to_csv(
+                xlsx_full_path=referencia_file_path,
+                sheets_to_convert=sheets_to_convert,
+                output_dir=output_dir
+            )
             self.logger.info("Pré-processamento de planilhas concluído com sucesso.")
-        except Exception as e:
-            self.logger.error(f"Erro ao executar o script de pré-processamento: {e}", exc_info=True)
-            raise
+        except ProcessingError as e:
+            self.logger.error(f"Erro durante o pré-processamento: {e}", exc_info=True)
+            raise # Re-raise the ProcessingError
 
     def _sync_catalog_status(self, db: Database):
         self.logger.info("Iniciando Fase 2: Sincronização de Status dos Catálogos.")
@@ -212,12 +220,14 @@ class Pipeline:
             self.logger.info(f"Status do catálogo de composições sincronizado. Itens desativados: {num_composicoes_updated}")
         except Exception as e:
             self.logger.error(f"Erro ao sincronizar status dos catálogos: {e}", exc_info=True)
-            raise AutoSinapiError(f"Erro em '_sync_catalog_status': {e}")
+            raise DatabaseError(f"Erro ao sincronizar status dos catálogos: {e}") from e
 
     def run(self):
         self.logger.info("======================================================")
         self.logger.info("=========   INICIANDO PIPELINE AUTOSINAPI   =========")
         self.logger.info("======================================================")
+        tables_updated = []
+        records_inserted = 0
         try:
             config = Config(db_config=self.db_config, sinapi_config=self.sinapi_config, mode=self.sinapi_config['mode'])
             self.logger.info("Configuração validada com sucesso.")
@@ -228,7 +238,10 @@ class Pipeline:
             db = Database(config.db_config)
 
             self.logger.info("Recriando tabelas do banco de dados para garantir conformidade.")
-            db.create_tables()
+            try:
+                db.create_tables()
+            except Exception as e:
+                raise DatabaseError(f"Erro ao recriar tabelas do banco de dados: {e}") from e
 
             year = config.sinapi_config['year']
             month = config.sinapi_config['month']
@@ -241,42 +254,64 @@ class Pipeline:
             
             if not local_zip_path:
                 self.logger.info("Arquivo não encontrado localmente. Iniciando download...")
-                file_content = downloader.get_sinapi_data(save_path=download_path)
-                local_zip_path = download_path / standardized_name
-                with open(local_zip_path, 'wb') as f:
-                    f.write(file_content.getbuffer())
-                self.logger.info(f"Download concluído e salvo em: {local_zip_path}")
+                try:
+                    file_content = downloader.get_sinapi_data(save_path=download_path)
+                    local_zip_path = download_path / standardized_name
+                    with open(local_zip_path, 'wb') as f:
+                        f.write(file_content.getbuffer())
+                    self.logger.info(f"Download concluído e salvo em: {local_zip_path}")
+                except Exception as e:
+                    raise DownloadError(f"Erro durante o download dos dados do SINAPI: {e}") from e
             
-            extraction_path = self._unzip_file(local_zip_path)
+            try:
+                extraction_path = self._unzip_file(local_zip_path)
+            except Exception as e:
+                raise ProcessingError(f"Erro ao descompactar o arquivo: {e}") from e
             
             # --- PRÉ-PROCESSAMENTO PARA CSV ---
-            self._run_pre_processing()
+            try:
+                self._run_pre_processing(referencia_file_path, extraction_path)
+            except Exception as e:
+                raise ProcessingError(f"Erro durante o pré-processamento: {e}") from e
             # --- FIM DO PRÉ-PROCESSAMENTO ---
 
             all_excel_files = list(extraction_path.glob('*.xlsx'))
             if not all_excel_files:
-                raise FileNotFoundError(f"Nenhum arquivo .xlsx encontrado em {extraction_path}")
+                raise ProcessingError(f"Nenhum arquivo .xlsx encontrado em {extraction_path}")
 
             manutencoes_file_path = next((f for f in all_excel_files if "Manuten" in f.name), None)
             referencia_file_path = next((f for f in all_excel_files if "Referência" in f.name), None)
 
             if manutencoes_file_path:
                 self.logger.info(f"FASE 1: Processamento de Manutenções ({manutencoes_file_path.name})")
-                manutencoes_df = processor.process_manutencoes(str(manutencoes_file_path))
-                db.save_data(manutencoes_df, 'manutencoes_historico', policy='append')
-                self.logger.info("Histórico de manutenções carregado com sucesso.")
-                self._sync_catalog_status(db) # FASE 2
+                try:
+                    manutencoes_df = processor.process_manutencoes(str(manutencoes_file_path))
+                    db.save_data(manutencoes_df, 'manutencoes_historico', policy='append')
+                    tables_updated.append("manutencoes_historico")
+                    records_inserted += len(manutencoes_df)
+                    self.logger.info("Histórico de manutenções carregado com sucesso.")
+                    self._sync_catalog_status(db) # FASE 2
+                except Exception as e:
+                    raise ProcessingError(f"Erro ao processar ou salvar dados de manutenções: {e}") from e
             else:
                 self.logger.warning("Arquivo de Manutenções não encontrado. Pulando Fases 1 e 2.")
 
             if not referencia_file_path:
                 self.logger.warning("Arquivo de Referência não encontrado. Finalizando pipeline.")
-                return
+                return {
+                    "status": "success",
+                    "message": f"Pipeline concluído. Arquivo de Referência não encontrado para {month}/{year}.",
+                    "tables_updated": tables_updated,
+                    "records_inserted": records_inserted
+                }
 
             self.logger.info(f"FASE 3: Processamento do Arquivo de Referência ({referencia_file_path.name})")
             self.logger.info("Processando catálogos, dados mensais e estrutura de composições...")
-            processed_data = processor.process_catalogo_e_precos(str(referencia_file_path))
-            structure_dfs = processor.process_composicao_itens(str(referencia_file_path))
+            try:
+                processed_data = processor.process_catalogo_e_precos(str(referencia_file_path))
+                structure_dfs = processor.process_composicao_itens(str(referencia_file_path))
+            except Exception as e:
+                raise ProcessingError(f"Erro ao processar catálogos ou estrutura de composições: {e}") from e
 
             if 'insumos' in processed_data:
                 existing_insumos_df = processed_data['insumos']
@@ -327,52 +362,85 @@ class Pipeline:
                 missing_composicoes_df = pd.DataFrame({
                     'codigo': missing_composicao_codes,
                     'descricao': [get_detail(code, 'descricao') for code in missing_composicao_codes],
-                    'unidade': [get_detail(code, 'unidade') for code in missing_composicao_codes]
+                    'unidade': [get_detail(code, 'unidade') for code in missing_composicao_codes],
                 })
                 processed_data['composicoes'] = pd.concat([existing_composicoes_df, missing_composicoes_df], ignore_index=True)
 
             self.logger.info("Iniciando carga de dados no banco de dados na ordem correta...")
 
-            if 'insumos' in processed_data and not processed_data['insumos'].empty:
-                db.save_data(processed_data['insumos'], 'insumos', policy='upsert', pk_columns=['codigo'])
-                self.logger.info("Catálogo de insumos (incluindo placeholders) carregado.")
-            if 'composicoes' in processed_data and not processed_data['composicoes'].empty:
-                db.save_data(processed_data['composicoes'], 'composicoes', policy='upsert', pk_columns=['codigo'])
-                self.logger.info("Catálogo de composições (incluindo placeholders) carregado.")
-            
-            db.truncate_table('composicao_insumos')
-            db.truncate_table('composicao_subcomposicoes')
-            db.save_data(structure_dfs['composicao_insumos'], 'composicao_insumos', policy='append')
-            db.save_data(structure_dfs['composicao_subcomposicoes'], 'composicao_subcomposicoes', policy='append')
-            self.logger.info("Estrutura de composições carregada com sucesso.")
+            try:
+                if 'insumos' in processed_data and not processed_data['insumos'].empty:
+                    db.save_data(processed_data['insumos'], 'insumos', policy='upsert', pk_columns=['codigo'])
+                    tables_updated.append("insumos")
+                    records_inserted += len(processed_data['insumos'])
+                    self.logger.info("Catálogo de insumos (incluindo placeholders) carregado.")
+                if 'composicoes' in processed_data and not processed_data['composicoes'].empty:
+                    db.save_data(processed_data['composicoes'], 'composicoes', policy='upsert', pk_columns=['codigo'])
+                    tables_updated.append("composicoes")
+                    records_inserted += len(processed_data['composicoes'])
+                    self.logger.info("Catálogo de composições (incluindo placeholders) carregado.")
+                
+                db.truncate_table('composicao_insumos')
+                db.truncate_table('composicao_subcomposicoes')
+                db.save_data(structure_dfs['composicao_insumos'], 'composicao_insumos', policy='append')
+                tables_updated.append("composicao_insumos")
+                records_inserted += len(structure_dfs['composicao_insumos'])
+                db.save_data(structure_dfs['composicao_subcomposicoes'], 'composicao_subcomposicoes', policy='append')
+                tables_updated.append("composicao_subcomposicoes")
+                records_inserted += len(structure_dfs['composicao_subcomposicoes'])
+                self.logger.info("Estrutura de composições carregada com sucesso.")
 
-            precos_carregados = False
-            if 'precos_insumos_mensal' in processed_data and not processed_data['precos_insumos_mensal'].empty:
-                processed_data['precos_insumos_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
-                db.save_data(processed_data['precos_insumos_mensal'], 'precos_insumos_mensal', policy='append')
-                precos_carregados = True
-            else:
-                self.logger.warning("Nenhum dado de PREÇOS DE INSUMOS foi encontrado ou processado. Pulando esta etapa.")
+                precos_carregados = False
+                if 'precos_insumos_mensal' in processed_data and not processed_data['precos_insumos_mensal'].empty:
+                    processed_data['precos_insumos_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
+                    db.save_data(processed_data['precos_insumos_mensal'], 'precos_insumos_mensal', policy='append')
+                    tables_updated.append("precos_insumos_mensal")
+                    records_inserted += len(processed_data['precos_insumos_mensal'])
+                    precos_carregados = True
+                else:
+                    self.logger.warning("Nenhum dado de PREÇOS DE INSUMOS foi encontrado ou processado. Pulando esta etapa.")
 
-            custos_carregados = False
-            if 'custos_composicoes_mensal' in processed_data and not processed_data['custos_composicoes_mensal'].empty:
-                processed_data['custos_composicoes_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
-                db.save_data(processed_data['custos_composicoes_mensal'], 'custos_composicoes_mensal', policy='append')
-                custos_carregados = True
-            else:
-                self.logger.warning("Nenhum dado de CUSTOS DE COMPOSIÇÕES foi encontrado ou processado. Pulando esta etapa.")
+                custos_carregados = False
+                if 'custos_composicoes_mensal' in processed_data and not processed_data['custos_composicoes_mensal'].empty:
+                    processed_data['custos_composicoes_mensal']['data_referencia'] = pd.to_datetime(data_referencia)
+                    db.save_data(processed_data['custos_composicoes_mensal'], 'custos_composicoes_mensal', policy='append')
+                    tables_updated.append("custos_composicoes_mensal")
+                    records_inserted += len(processed_data['custos_composicoes_mensal'])
+                    custos_carregados = True
+                else:
+                    self.logger.warning("Nenhum dado de CUSTOS DE COMPOSIÇÕES foi encontrado ou processado. Pulando esta etapa.")
 
-            if precos_carregados or custos_carregados:
-                self.logger.info("Dados mensais (preços/custos) carregados com sucesso.")
-            else:
-                self.logger.warning("Nenhuma informação de preços ou custos foi carregada nesta execução.")
+                if precos_carregados or custos_carregados:
+                    self.logger.info("Dados mensais (preços/custos) carregados com sucesso.")
+                else:
+                    self.logger.warning("Nenhuma informação de preços ou custos foi carregada nesta execução.")
+            except Exception as e:
+                raise DatabaseError(f"Erro durante a carga de dados no banco de dados: {e}") from e
             
             self.logger.info("Pipeline AutoSINAPI concluído com sucesso!")
+            return {
+                "status": "success",
+                "message": f"Dados de {month}/{year} populados com sucesso.",
+                "tables_updated": list(set(tables_updated)), # Use set to avoid duplicates
+                "records_inserted": records_inserted
+            }
 
         except AutoSinapiError as e:
             self.logger.error(f"Erro de negócio no pipeline AutoSINAPI: {e}", exc_info=True)
+            return {
+                "status": "failed",
+                "message": str(e),
+                "tables_updated": tables_updated,
+                "records_inserted": records_inserted
+            }
         except Exception as e:
             self.logger.error(f"Ocorreu um erro inesperado e fatal no pipeline: {e}", exc_info=True)
+            return {
+                "status": "failed",
+                "message": f"Erro inesperado e fatal: {e}",
+                "tables_updated": tables_updated,
+                "records_inserted": records_inserted
+            }
 
 def main():
     parser = argparse.ArgumentParser(description="Pipeline de ETL para dados do SINAPI.")
@@ -383,7 +451,7 @@ def main():
     setup_logging(debug_mode=True)
 
     try:
-        pipeline = Pipeline(config_path=args.config)
+        pipeline = PipelineETL(config_path=args.config)
         pipeline.run()
     except Exception:
         logger.critical("Pipeline encerrado devido a um erro fatal.")
