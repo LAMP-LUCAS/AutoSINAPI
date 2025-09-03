@@ -142,7 +142,8 @@ class Pipeline:
             'month': self.config['default_month'],
             'type': self.config.get('workbook_type_name', 'REFERENCIA'),
             'file_format': self.config.get('default_format', 'XLSX'),
-            'duplicate_policy': self.config.get('duplicate_policy', 'substituir')
+            'duplicate_policy': self.config.get('duplicate_policy', 'substituir'),
+            'mode': os.getenv('AUTOSINAPI_MODE', 'local') # Add this line
         }
 
     def _find_and_normalize_zip(self, download_path: Path, standardized_name: str) -> Path:
@@ -218,7 +219,7 @@ class Pipeline:
         self.logger.info("=========   INICIANDO PIPELINE AUTOSINAPI   =========")
         self.logger.info("======================================================")
         try:
-            config = Config(db_config=self.db_config, sinapi_config=self.sinapi_config, mode='local')
+            config = Config(db_config=self.db_config, sinapi_config=self.sinapi_config, mode=self.sinapi_config['mode'])
             self.logger.info("Configuração validada com sucesso.")
             self.logger.debug(f"Configurações SINAPI para esta execução: {config.sinapi_config}")
 
