@@ -1,9 +1,17 @@
 # =========================
+# Arquivos de build e distribuição
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
 # Arquivos sensíveis e temporários
 # =========================
 
 # Ignora todos os arquivos com extensão .secrets em qualquer diretório
 **/*.secrets
+**/*.env
 
 # Ignora arquivo .secrets na raiz
 .secrets
@@ -52,8 +60,10 @@
 # Ignora arquivos compactados
 **/*.zip
 
-# Ignora arquivos JSON
+# Ignora arquivos JSON, exceto os de exemplo
 **/*.json
+!**/*.example.json
+
 
 # =========================
 # Exceções (remova o ! se não quiser versionar)
@@ -83,3 +93,7 @@ Thumbs.db
 
 # Ignora diretórios de downloads
 downloads/
+tools/docker/.env
+AutoSINAPI.code-workspace
+.coverage
+coverage.xml

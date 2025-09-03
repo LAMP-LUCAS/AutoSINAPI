@@ -1,230 +1,130 @@
+# 🚀 AutoSINAPI: Acelere Suas Decisões na Construção Civil com Dados Inteligentes
 
-# 🔄 AutoSINAPI: Pipeline e Toolkit para Dados SINAPI
+[![Licença](https://img.shields.io/badge/licen%C3%A7a-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/LAMP-LUCAS/AutoSINAPI/releases)
 
-**Solução open source para simplificar o acesso, tratamento e gestão dos dados do SINAPI (Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil).**
+## 🚧 Cansado de Planilhas e Dados Desatualizados? Conheça o AutoSINAPI!
 
-O AutoSINAPI transforma planilhas reais do SINAPI em dados estruturados, validados e prontos para análise ou integração com bancos PostgreSQL, APIs e dashboards. O projeto segue Clean Code, SOLID e boas práticas de testes automatizados.
+Para arquitetos, engenheiros e construtores, a gestão de custos e orçamentos é a espinha dorsal de qualquer projeto bem-sucedido. No entanto, a realidade muitas vezes envolve:
 
+*   **Horas Perdidas:** Coletando, organizando e atualizando manualmente dados do SINAPI.
+*   **Decisões Baseadas em Achismos:** A falta de dados precisos e atualizados compromete a assertividade.
+*   **Complexidade:** Lidar com a vasta e mutável base de dados do SINAPI é um desafio constante.
 
-## � Principais Funcionalidades
+O **AutoSINAPI** surge como a solução definitiva para transformar essa realidade. Somos uma ferramenta open-source completa, projetada para automatizar o ciclo de vida dos dados do SINAPI, desde a coleta até a análise, entregando a você **informação precisa e atualizada na palma da mão.**
 
-| Funcionalidade                  | Status       | Próximos Passos              |
-|---------------------------------|--------------|------------------------------|
-| Download automático do SINAPI   | ✅ Funcional | API REST para consultas      |
-| Processamento robusto de planilhas reais | ✅ Implementado | Integração com SINCRO API  |
-| Inserção em PostgreSQL          | ✅ Operante  | Dashboard de análises        |
-| CLI para pipeline               | 🚧 Em desenvolvimento | Documentação interativa |
+### ✨ O Que o AutoSINAPI Oferece?
+
+*   **Automação Inteligente:** Diga adeus à tediosa coleta manual. O AutoSINAPI baixa, processa e organiza os dados do SINAPI para você.
+*   **Precisão Inquestionável:** Tenha acesso a dados limpos, padronizados e prontos para uso, garantindo orçamentos mais acurados e análises confiáveis.
+*   **Visão Estratégica:** Libere seu tempo para focar no que realmente importa: análises estratégicas, otimização de custos e tomadas de decisão embasadas.
+*   **Histórico Completo:** Mantenha um registro detalhado das alterações do SINAPI ao longo do tempo, essencial para auditorias e comparações.
+*   **Flexibilidade:** Seja você um usuário final buscando uma solução pronta ou um desenvolvedor que precisa integrar dados SINAPI em seus sistemas, o AutoSINAPI se adapta.
 
 ---
 
+## 🛠️ Para Desenvolvedores: Robustez, Confiabilidade e Código Aberto
 
-## 🏗️ Arquitetura e Organização
+Construído com as melhores práticas de engenharia de software, o AutoSINAPI é mais do que uma ferramenta; é um `toolkit` Python modular, testável e desacoplado.
 
-O AutoSINAPI é dividido em módulos desacoplados:
+*   **Arquitetura Modular:** Componentes bem definidos (`downloader`, `processor`, `database`) facilitam a compreensão, manutenção e extensão.
+*   **Testes Abrangentes:** Uma suíte de testes robusta garante a estabilidade e a confiabilidade do pipeline, mesmo com as constantes atualizações do SINAPI.
+*   **Integração Simplificada:** Projetado para ser facilmente consumido por outras aplicações, como APIs REST (ex: [autoSINAPI_API](https://github.com/LAMP-LUCAS/autoSINAPI_API)) ou CLIs customizadas.
+*   **Open Source:** Transparência total e a possibilidade de contribuir para a evolução da ferramenta.
 
-- **core/**: processamento, download, validação e integração com banco
-- **tools/**: scripts CLI e utilitários
-- **tests/**: testes unitários e de integração (pytest, mocks, arquivos reais)
-- **docs/**: documentação técnica, DataModel, tutorial e padrões
+---
 
-O pipeline segue o modelo ETL (Extração, Transformação, Carga) e pode ser usado como biblioteca Python ou via CLI.
+## 🚀 Como Começar com o AutoSINAPI
 
-### Modelo de Dados
-O modelo relacional segue o DataModel descrito em [`docs/DataModel.md`](docs/DataModel.md), cobrindo:
-- Catálogo de insumos e composições
-- Séries históricas de preços/custos
-- Estrutura de composições e histórico de manutenções
+Existem duas maneiras de rodar o pipeline, escolha a que melhor se adapta ao seu fluxo de trabalho.
 
-## 🌟 Por Que Contribuir?
+### Opção 1: Ambiente Docker (Recomendado)
 
-- **Impacto direto** na gestão de custos da construção civil
-- Ambiente **amigável para iniciantes** em programação
-- **Aprendizado prático** com Python, PostgreSQL e automação
-- Faça parte de uma comunidade que **simplifica dados complexos!**
+A forma mais simples e recomendada de usar o AutoSINAPI. Com um único comando, você sobe um ambiente completo e isolado com o banco de dados PostgreSQL e o pipeline pronto para rodar.
 
-> "Sozinhos vamos mais rápido, juntos vamos mais longe" - Venha construir esta solução conosco! 🏗️💙
-## Objetivos
+**Pré-requisitos:**
+-   Docker e Docker Compose instalados.
 
-- Automatizar o download dos dados do SINAPI
-- Tratar e organizar os dados para facilitar consultas e análises
-- Inserir os dados em um banco PostgreSQL, permitindo edição e atualização recorrente
-- Prover scripts e ferramentas para facilitar a manutenção e evolução do processo
+**Passo a Passo:**
 
+1.  **Clone o repositório:**
+    ```bash
+    git clone https://github.com/LAMP-LUCAS/AutoSINAPI.git
+    cd AutoSINAPI
+    ```
 
-## 📂 Estrutura do Projeto
+2.  **Configure o Ambiente:**
+    -   Dentro da pasta `tools/docker/`, renomeie o arquivo `.env.example` para `.env`.
+    -   Abra o arquivo `.env` e ajuste as variáveis conforme sua necessidade (ano, mês, senhas, etc.).
 
-```plaintext
-AutoSINAPI/
- ┣ autosinapi/           # Código principal (core, pipeline, config, exceptions)
- ┣ tools/                # Scripts CLI, downloads, configs de exemplo
- ┣ tests/                # Testes unitários e integração (pytest, arquivos reais e sintéticos)
- ┣ docs/                 # Documentação, DataModel, tutorial, nomenclaturas
- ┣ requirements.txt      # Dependências
- ┣ pyproject.toml        # Configuração do módulo
- ┣ setup.py              # Instalação
- ┗ README.md
-```
+3.  **(Opcional) Adicione Arquivos Locais:**
+    -   Se você já tiver o arquivo `.zip` do SINAPI, coloque-o dentro da pasta `tools/docker/downloads/`. O pipeline irá detectá-lo, renomeá-lo para o padrão correto (se necessário) e pulará a etapa de download.
 
+4.  **Execute o Pipeline:**
+    Ainda dentro da pasta `tools/docker/`, execute o comando:
+    ```bash
+    docker-compose up
+    ```
+    Este comando irá construir a imagem, subir o container do banco de dados e, em seguida, rodar o container da aplicação que executará o pipeline. Ao final, os containers serão finalizados.
 
-## ⚙️ Instalação e Configuração
+### Opção 2: Ambiente Local (Avançado)
 
+Para quem prefere ter controle total sobre o ambiente e não usar Docker.
 
-### 1. Clone o repositório
+**Pré-requisitos:**
+-   Python 3.8+ e PostgreSQL 12+ instalados e configurados na sua máquina.
 
-```bash
-git clone https://github.com/seu-usuario/AutoSINAPIpostgres.git
-cd AutoSINAPIpostgres
-```
+**Passo a Passo:**
 
+1.  **Clone o repositório e instale as dependências** conforme a seção de instalação do `README.md`.
+2.  **Configure o acesso ao banco de dados** no arquivo `tools/sql_access.secrets`.
+3.  **Crie e ajuste um arquivo de configuração** (ex: `tools/meu_config.json`) a partir do `tools/CONFIG.example.json`.
+4.  **Execute o pipeline** via linha de comando:
+    ```bash
+    python tools/autosinapi_pipeline.py --config tools/meu_config.json
+    ```
 
-### 2. Crie e ative o ambiente virtual Python
+---
 
-```bash
-python -m venv venv
-.\venv\Scripts\activate
-```
+## 🏗️ Arquitetura do Projeto
 
+O **AutoSINAPI** é projetado como um `toolkit` modular e desacoplado, focado em processar dados do SINAPI de forma eficiente e robusta. Sua arquitetura é dividida em componentes principais que interagem para formar um pipeline ETL completo.
 
-### 3. Instale as dependências
+Para uma compreensão aprofundada do modelo de dados e do fluxo de execução do ETL, consulte os seguintes documentos:
 
-```bash
-python update_requirements.py  # Gera requirements.txt atualizado, OPCIONAL!
-pip install -r requirements.txt
-```
+*   **[Modelo de Dados Detalhado](docs/DataModel.md)**: Descreve as tabelas do banco de dados, seus relacionamentos e a estrutura dos dados.
+*   **[Fluxo de Execução do ETL](docs/DataModel.md#3-processo-de-etl-fluxo-de-execucao-detalhado)**: Detalha as fases do processo de Extração, Transformação e Carga, desde a obtenção dos dados até a persistência no banco de dados.
 
+---
 
-### 4. Configure o acesso ao PostgreSQL
+## Versionamento e Estratégia de Lançamento
 
-- Renomeie `sql_access.secrets.example` para `sql_access.secrets`
-- Edite o arquivo com suas credenciais:
+O versionamento deste projeto é **totalmente automatizado com base nas tags do Git**. Para mais detalhes, consulte a documentação sobre o fluxo de trabalho do Git.
 
-```ini
-DB_USER = 'seu_usuario'
-DB_PASSWORD = 'sua_senha'
-DB_HOST = 'localhost'
-DB_PORT = '5432'
-DB_NAME = 'sinapi'
-DB_INITIAL_DB = 'postgres'
-```
+## 🌐 Ecossistema AutoSINAPI
 
+-   **[autoSINAPI_API](https://github.com/LAMP-LUCAS/autoSINAPI_API):** API para consumir os dados do banco de dados SINAPI.
 
-### 5. Configure o arquivo CONFIG.json (opcional para uso local)
+## 🤝 Como Contribuir
 
-- Atualmente está configurado para tratar os dados das bases à partir de 2025, substituindo os dados antigos e utilizando o arquivo XLSX REFERENCIA para insersão:
+O **AutoSINAPI** é um projeto open-source que cresce com a comunidade! Sua contribuição é fundamental, seja ela qual for. Cada ajuda nos impulsiona a construir uma ferramenta cada vez mais robusta e útil para todos.
 
-```ini
-{
-    "secrets_path": "sql_access.secrets", # arquivo com os parâmetros de conexão
-    "default_year": "2025", # ano da base desejada
-    "default_month": "01", # mês da base desejada
-    "default_format": "xlsx", # formato de arquivo a ser trabalhado (Atualmente só suporta XLSX)
-    "workbook_type_name": "REFERENCIA", # Workbook exemplo para trabalhar
-    "duplicate_policy": "substituir", # Política de insersão de dados novos
-    "backup_dir": "./backups", # Pasta para salvamento dos dados tratados antes de inserir no banco de dados
-    "log_level": "info", # Nível de LOG
-    "sheet_processors": { # Configuração de recorte de dados para cada tipo de planilha {NOME_PLANILHA: {COLUNA_RECORTE, COLUNA_CABEÇALHO}}
-        "ISD": {"split_id": 5, "header_id": 9},
-        "CSD": {"split_id": 4, "header_id": 9},
-        "ANALITICO": {"split_id": 0, "header_id": 9},
-        "COEFICIENTES": {"split_id": 5, "header_id": 5},
-        "MANUTENCOES": {"split_id": 0, "header_id": 5},
-        "MAO_DE_OBRA": {"split_id": 4, "header_id": 5}
-    }
-}
-```
+**Como você pode ajudar?**
 
+*   **Reporte Bugs:** Encontrou um problema? Sua observação é valiosa! Abra uma [Issue no GitHub](https://github.com/LAMP-LUCAS/AutoSINAPI/issues) descrevendo o bug. Isso nos ajuda a identificar e corrigir falhas rapidamente.
+*   **Sugira Novas Funcionalidades:** Tem uma ideia para melhorar o AutoSINAPI? Compartilhe conosco abrindo uma [Issue de Feature Request](https://github.com/LAMP-LUCAS/AutoSINAPI/issues).
+*   **Contribua com Código:** Se você é desenvolvedor, suas habilidades são muito bem-vindas! Contribua com novas funcionalidades, correções de bugs ou melhorias no código. Consulte nosso guia de contribuição para começar: [Como Contribuir](docs/CONTRIBUTING.md).
+*   **Documentação:** Ajude a melhorar nossa documentação, tornando-a mais clara e completa.
+*   **Divulgue:** Compartilhe o AutoSINAPI com sua rede! Quanto mais pessoas conhecerem, maior nossa comunidade.
+*   **Apoie com um Cafezinho:** Gosta do projeto e quer nos ajudar a manter o ritmo? Considere fazer uma pequena doação para o "cafezinho" da equipe. Seu apoio financeiro, por menor que seja, faz uma grande diferença!  
+🔑 Chave Pix: `a03ffaea-d46f-4dc6-a372-2b4fa8b0385f` copie e cole no seu app bancário ou \
+📋 Use nosso link de pagamento pelo [MercadoPago](link.mercadopago.com.br/autosinapi)
 
-## 🛠️ Uso dos Scripts
+**Junte-se a nós e faça parte desta jornada!**
 
-
-### 1. Pipeline completo (download, processamento, inserção)
-
-
-O script `tools/autosinapi_pipeline.py` realiza todas as etapas necessárias para o download dos arquivos do SINAPI e inserção no banco de dados PostgreSQL:
-
-```bash
-python autosinap_pipeline.py
-```
-
-Se não configurar o CONFIG.json Você será solicitado a informar:
-
-- Ano (YYYY)
-- Mês (MM)
-- Tipo de planilha (familias_e_coeficientes, Manutenções, mao_de_obra, Referência)
-- Formato (xlsx é o único formato suportado até o momento)
-
-
-### 2. (Futuro) CLI para processamento customizado
-
-O script `autosinapi_cli_pipeline.py` processa e insere os dados no banco:
-
-```bash
-python autosinapi_cli_pipeline.py --arquivo_xlsx <caminho> --tipo_base <tipo> --config <caminho>
-```
-
-Parâmetros disponíveis:
-
-- `--arquivo_xlsx`: Caminho do arquivo Excel a ser processado
-- `--config`: Caminho do arquivo de configuração CONFIG.json
-- `--tipo_base`: Tipo de dados (insumos, composicao, analitico)
-- `--user`: Usuário do PostgreSQL (opcional, usa .secrets se não informado)
-- `--password`: Senha do PostgreSQL (opcional, usa .secrets se não informado)
-- `--host`: Host do PostgreSQL (opcional, usa .secrets se não informado)
-- `--port`: Porta do PostgreSQL (opcional, usa .secrets se não informado)
-- `--dbname`: Nome do banco (opcional, usa .secrets se não informado)
-
-
-## 🗄️ Estrutura do Banco de Dados
-
-O modelo segue o DataModel do projeto, com tabelas para insumos, composições, preços, custos, estrutura e histórico. Veja [`docs/DataModel.md`](docs/DataModel.md) para detalhes e exemplos.
-
-
-## 🩺 Troubleshooting
-
-### Erros Comuns
-
-1. Erro de conexão PostgreSQL:
-   - Verifique se o PostgreSQL está rodando
-   - Confirme as credenciais em `sql_access.secrets`
-   - Verifique se o banco e schemas existem ou se foram criados corretamente pelo script `autosinapi_pipeline.py`
-
-2. Erro no download SINAPI:
-   - Verifique sua conexão com a internet
-   - Confirme se o arquivo existe no site da Caixa
-   - Verifique o formato do ano (YYYY) e mês (MM)
-   - ATENÇÃO: Se realizadas várias tentativas a plataforma da CEF pode bloquear seu IP, utilize próxies ou aguarde um tempo antes de tentar novamente.
-
-3. Erro na análise Excel:
-   - Confirme se o arquivo não está aberto em outro programa
-   - Verifique se há permissão de leitura no diretório
-   - Verifique se as configurações de split e header presentes no arquivo `CONFIG.json` estão corretas
-
-
-## 🤝 Como contribuir
-
-1. Faça um fork deste repositório
-2. Crie uma branch para sua feature ou correção
-3. Envie um pull request detalhando as alterações propostas
-4. Beba água e se possível passe um cafezinho antes de contribuir.
-
-
-## 💻 Requisitos do Sistema
-
-- Python 3.0+
-- PostgreSQL 12+
-- Bibliotecas Python listadas em `requirements.txt`
-
+Para detalhes sobre como configurar seu ambiente de desenvolvimento, padrões de código, fluxo de trabalho e muito mais, consulte nosso guia completo: [Como Contribuir](docs/CONTRIBUTING.md).
 
 ## 📝 Licença
 
-Este projeto é open source sob os termos da GNU General Public License, versão 3 (GPLv3). Isso significa que você pode utilizar, modificar e distribuir o projeto, inclusive para fins comerciais. Contudo, se você criar derivados ou incorporar este código em outros produtos e distribuí-los, estes também deverão estar sob licença GPLv3, garantindo assim que o código-fonte continue acessível aos usuários.
-
-
-## 📬 Contato
-
-Sugestões, dúvidas ou colaborações são bem-vindas via issues ou pull requests.
-
-
----
-
-> Para detalhes sobre arquitetura, padrões, DataModel e roadmap, consulte a pasta [`docs/`](docs/).
+Distribuído sob a licença **GNU General Public License v3.0**.

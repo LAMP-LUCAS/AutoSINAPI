@@ -69,4 +69,4 @@ def run_etl(db_config: dict, sinapi_config: dict, mode: str) -> dict:
 ## Referências
 - #issue_number (se houver)
 - [Documento de Arquitetura](docs/workPlan.md)
-- [Padrões de Nomenclatura](docs/nomenclaturas.md)
+- [Padrões de Contribuição](docs/CONTRIBUTING.md)
