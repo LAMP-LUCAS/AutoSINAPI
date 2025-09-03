@@ -4,16 +4,18 @@ FROM python:3.9-slim
 # Instala o Git
 RUN apt-get update && apt-get install -y git
 
-# Define o diretório de trabalho dentro do container
+# Define o diretorio de trabalho dentro do container
 WORKDIR /app
 
-# Copia todo o contexto do projeto para o diretório de trabalho
-# O .dockerignore na raiz do projeto irá controlar o que é copiado
+# Copia todo o contexto do projeto para o diretorio de trabalho
 COPY . /app
 
-# Instala as dependências do projeto
-# Agora o setuptools-scm funcionará, pois o Git está instalado
+# Atualiza o pip e instala o driver do postgres explicitamente
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir psycopg2-binary
+
+# Instala as dependencias do projeto
 RUN pip install --no-cache-dir .
 
-# Define o comando padrão para executar o pipeline
+# Define o comando padrao para executar o pipeline
 CMD ["python", "tools/autosinapi_pipeline.py"]

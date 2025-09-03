@@ -1,135 +1,236 @@
-# Estrutura de Dados e ETL para Módulo Python SINAPI
+# **Modelo de Dados e ETL para o Módulo SINAPI**
 
-## 1. Introdução
+## 1\. Introdução
 
-### 1.1. Objetivo do Documento
-Este documento detalha a arquitetura de dados e o processo de **ETL (Extração, Transformação e Carga)** recomendados para a criação de um módulo Python OpenSource. O objetivo do módulo é processar as planilhas mensais do **SINAPI** e consolidar os dados em um banco de dados **PostgreSQL**, permitindo que profissionais de engenharia e arquitetura realizem consultas complexas para orçamentação e planejamento de obras via `API` ou localmente.
+### 1.1. Objetivo
 
-### 1.2. Visão Geral do Ecossistema SINAPI
-Os dados do SINAPI são distribuídos em múltiplas planilhas que representam diferentes facetas do sistema de custos:
+Este documento detalha a arquitetura de dados e o processo de **ETL (Extração, Transformação e Carga)** para a criação de um módulo Python OpenSource. O objetivo é processar os arquivos mensais do **SINAPI**, consolidando os dados em um banco de dados **PostgreSQL** de forma robusta, normalizada e com total rastreabilidade histórica.
 
-*   **Catálogos**: Listas de Insumos e Composições.
-*   **Estruturas**: A relação de dependência entre composições e seus itens.
-*   **Preços e Custos**: Valores monetários regionalizados (por UF) e sensíveis à política de desoneração.
-*   **Metadados**: Informações auxiliares como "Famílias de Insumos" e o histórico de manutenções (ativações, desativações, etc.).
+A estrutura resultante permitirá que a comunidade de engenharia e arquitetura realize consultas complexas para orçamentação, planejamento e análise histórica, seja através de uma `API` ou acessando o banco de dados localmente.
 
-A arquitetura proposta visa modelar essas facetas de forma coesa e histórica.
+### 1.2. Visão Geral das Fontes de Dados
 
-## 2. Modelo de Dados Relacional (PostgreSQL)
+O ecossistema de dados do SINAPI é composto por dois arquivos principais, que devem ser processados em conjunto para garantir a consistência e a integridade do banco de dados:
 
-A estrutura é organizada em tabelas de **Catálogo**, **Dados Mensais** e **Suporte/Histórico**.
+1.  **`SINAPI_Referência_AAAA_MM.xlsx`**: Arquivo principal contendo os catálogos de preços, custos e a estrutura analítica das composições para o mês de referência.
+2.  **`SINAPI_manutencoes_AAAA_MM.xlsx`**: Arquivo de suporte que detalha todo o histórico de alterações (ativações, desativações, mudanças de descrição) dos insumos e composições. É a fonte da verdade para o ciclo de vida de cada item.
 
-### 2.1. Tabelas de Catálogo (Entidades Principais)
-Estas tabelas contêm a descrição dos objetos centrais, que mudam com pouca frequência.
+## 2\. Modelo de Dados Relacional (PostgreSQL)
+
+O modelo é projetado para máxima integridade, performance e clareza, separando entidades de catálogo, dados de série histórica, suas relações estruturais e o histórico de eventos.
+
+### 2.1. Catálogo (Entidades Principais)
+
+Armazenam a descrição única e o **estado atual** de cada insumo e composição.
 
 #### Tabela `insumos`
+
 | Coluna | Tipo | Restrições/Descrição |
 | :--- | :--- | :--- |
-| `codigo` | `INTEGER` | **Chave Primária** |
-| `descricao` | `TEXT` | |
-| `unidade` | `VARCHAR` | |
-| `status` | `VARCHAR` | `Default: 'ATIVO'`. Controla o estado (`ATIVO`/`DESATIVADO`). |
+| `codigo` | `INTEGER` | **Chave Primária (PK)** |
+| `descricao` | `TEXT` | Descrição completa do insumo. |
+| `unidade` | `VARCHAR` | Unidade de medida (UN, M2, M3, KG). |
+| `classificacao` | `TEXT` | Classificação hierárquica do insumo. |
+| `status` | `VARCHAR` | `'ATIVO'` ou `'DESATIVADO'`. **Controlado pelo ETL de manutenções**. |
 
 #### Tabela `composicoes`
+
 | Coluna | Tipo | Restrições/Descrição |
 | :--- | :--- | :--- |
-| `codigo` | `INTEGER` | **Chave Primária** |
-| `descricao` | `TEXT` | |
-| `unidade` | `VARCHAR` | |
-| `grupo` | `VARCHAR` | |
-| `status` | `VARCHAR` | `Default: 'ATIVO'`. Controla o estado (`ATIVO`/`DESATIVADO`). |
+| `codigo` | `INTEGER` | **Chave Primária (PK)** |
+| `descricao` | `TEXT` | Descrição completa da composição. |
+| `unidade` | `VARCHAR` | Unidade de medida (UN, M2, M3). |
+| `grupo` | `VARCHAR` | Grupo ao qual a composição pertence. |
+| `status` | `VARCHAR` | `'ATIVO'` ou `'DESATIVADO'`. **Controlado pelo ETL de manutenções**. |
 
-### 2.2. Tabelas de Dados Mensais (Série Histórica)
-Estas tabelas recebem novos registros a cada mês, construindo o histórico de preços e custos.
+### 2.2. Dados Mensais (Série Histórica)
+
+Recebem novos registros a cada mês, construindo o histórico de preços e custos.
 
 #### Tabela `precos_insumos_mensal`
+
 | Coluna | Tipo | Restrições/Descrição |
 | :--- | :--- | :--- |
-| `insumo_codigo` | `INTEGER` | `FK` -> `insumos.codigo` |
-| `uf` | `CHAR(2)` | |
-| `data_referencia` | `DATE` | |
-| `preco_mediano` | `NUMERIC` | |
-| `desonerado` | `BOOLEAN` | |
-| **Chave Primária Composta** | | (`insumo_codigo`, `uf`, `data_referencia`, `desonerado`) |
+| `insumo_codigo` | `INTEGER` | `FK` -\> `insumos.codigo` |
+| `uf` | `CHAR(2)` | Unidade Federativa. |
+| `data_referencia` | `DATE` | Primeiro dia do mês de referência. |
+| `preco_mediano` | `NUMERIC` | Preço do insumo na UF/Data/Regime. |
+| `regime` | `VARCHAR` | `'NAO_DESONERADO'`, `'DESONERADO'`, `'SEM_ENCARGOS'`. |
+| **PK Composta** | | (`insumo_codigo`, `uf`, `data_referencia`, `regime`) |
 
 #### Tabela `custos_composicoes_mensal`
+
 | Coluna | Tipo | Restrições/Descrição |
 | :--- | :--- | :--- |
-| `composicao_codigo` | `INTEGER` | `FK` -> `composicoes.codigo` |
-| `uf` | `CHAR(2)` | |
-| `data_referencia` | `DATE` | |
-| `custo_total` | `NUMERIC` | |
-| `percentual_mao_de_obra` | `NUMERIC` | |
-| `desonerado` | `BOOLEAN` | |
-| **Chave Primária Composta** | | (`composicao_codigo`, `uf`, `data_referencia`, `desonerado`) |
+| `composicao_codigo`| `INTEGER` | `FK` -\> `composicoes.codigo` |
+| `uf` | `CHAR(2)` | Unidade Federativa. |
+| `data_referencia` | `DATE` | Primeiro dia do mês de referência. |
+| `custo_total` | `NUMERIC` | Custo da composição na UF/Data/Regime. |
+| `regime` | `VARCHAR` | `'NAO_DESONERADO'`, `'DESONERADO'`, `'SEM_ENCARGOS'`. |
+| **PK Composta** | | (`composicao_codigo`, `uf`, `data_referencia`, `regime`) |
 
-### 2.3. Tabelas de Suporte e Histórico
-Estas tabelas modelam os relacionamentos e registram as mudanças ao longo do tempo.
+### 2.3. Estrutura das Composições (Relacionamentos)
 
-#### Tabela `composicao_itens`
+Modelam a estrutura hierárquica das composições. Devem ser totalmente recarregadas a cada mês para refletir a estrutura mais atual.
+
+#### Tabela `composicao_insumos`
+
 | Coluna | Tipo | Restrições/Descrição |
 | :--- | :--- | :--- |
-| `composicao_pai_codigo` | `INTEGER` | `FK` -> `composicoes.codigo` |
-| `item_codigo` | `INTEGER` | |
-| `tipo_item` | `VARCHAR` | ('INSUMO' ou 'COMPOSICAO') |
-| `coeficiente` | `NUMERIC` | |
-| **Chave Primária Composta** | | (`composicao_pai_codigo`, `item_codigo`, `tipo_item`) |
+| `composicao_pai_codigo` | `INTEGER` | `FK` -\> `composicoes.codigo` |
+| `insumo_filho_codigo` | `INTEGER` | `FK` -\> `insumos.codigo` |
+| `coeficiente` | `NUMERIC` | Coeficiente de consumo do insumo. |
+| **PK Composta** | | (`composicao_pai_codigo`, `insumo_filho_codigo`) |
 
-#### Tabela `manutencoes_historico` (Tabela Chave para Gestão de Histórico)
+#### Tabela `composicao_subcomposicoes`
+
 | Coluna | Tipo | Restrições/Descrição |
 | :--- | :--- | :--- |
-| `item_codigo` | `INTEGER` | |
-| `tipo_item` | `VARCHAR` | ('INSUMO' ou 'COMPOSICAO') |
-| `data_referencia` | `DATE` | |
-| `tipo_manutencao` | `VARCHAR` | Ex: 'DESATIVAÇÃO', 'ALTERACAO DE DESCRICAO' |
-| `descricao_anterior` | `TEXT` | `Nullable` |
-| `descricao_nova` | `TEXT` | `Nullable` |
-| **Chave Primária Composta** | | (`item_codigo`, `tipo_item`, `data_referencia`, `tipo_manutencao`) |
+| `composicao_pai_codigo` | `INTEGER` | `FK` -\> `composicoes.codigo` |
+| `composicao_filho_codigo` | `INTEGER` | `FK` -\> `composicoes.codigo` |
+| `coeficiente` | `NUMERIC` | Coeficiente de consumo da subcomposição. |
+| **PK Composta** | | (`composicao_pai_codigo`, `composicao_filho_codigo`) |
 
-## 3. Processo de ETL (Extract, Transform, Load)
+### 2.4. Histórico de Manutenções
 
-O módulo Python deve implementar uma classe ou conjunto de funções que orquestre o seguinte fluxo mensal:
+Esta tabela é o **log imutável** de todas as mudanças ocorridas nos itens do SINAPI.
 
-### 3.1. Etapa 1: Extração
-Identificar e carregar em memória (usando `Pandas DataFrames`, por exemplo) todos os arquivos CSV relevantes do mês de referência (ex: `ISD.csv`, `CSD.csv`, `Analitico.csv`, `Manutencoes.csv`, etc.).
+#### Tabela `manutencoes_historico`
 
-### 3.2. Etapa 2: Transformação (Regras de Negócio)
+| Coluna | Tipo | Restrições/Descrição |
+| :--- | :--- | :--- |
+| `item_codigo` | `INTEGER` | Código do Insumo ou Composição. |
+| `tipo_item` | `VARCHAR` | `'INSUMO'` ou `'COMPOSICAO'`. |
+| `data_referencia` | `DATE` | Data do evento de manutenção (primeiro dia do mês). |
+| `tipo_manutencao` | `TEXT` | Descrição da manutenção realizada (Ex: 'DESATIVAÇÃO'). |
+| `descricao_item` | `TEXT` | Descrição do item no momento do evento. |
+| **PK Composta** | | (`item_codigo`, `tipo_item`, `data_referencia`, `tipo_manutencao`) |
 
-#### Processar Manutenções (Arquivo `Manutencoes.csv`)
-Esta é a primeira e mais importante etapa da transformação.
-1.  Para cada linha no arquivo de manutenções, criar um registro na tabela `manutencoes_historico`.
-2.  Com base na manutenção mais recente de cada item, atualizar a coluna `status` nas tabelas `insumos` e `composicoes`. Por exemplo, se a última entrada para a composição `95995` foi 'DESATIVAÇÃO', o campo `composicoes.status` para esse código deve ser atualizado para `'DESATIVADO'`.
-3.  Criar ou atualizar os registros nas tabelas de catálogo (`insumos`, `composicoes`). A lógica deve ser de **UPSERT**: se o código já existe, atualize a descrição e o status se necessário; se não existe, insira um novo registro.
+### 2.5. Visão Unificada (View) para Simplificar Consultas
 
-#### Processar Catálogos e Estruturas (Arquivo `Analitico.csv`)
-*   Popular a tabela `composicao_itens` com as relações de hierarquia. Esta tabela deve ser completamente recarregada a cada mês para refletir a estrutura mais atual das composições.
+Para facilitar a consulta de todos os itens de uma composição (sejam insumos ou subcomposições) sem a necessidade de acessar duas tabelas, uma `VIEW` deve ser criada no banco de dados.
 
-#### Processar Preços e Custos (Arquivos `ISD`, `CSD`, `Mão de Obra`, etc.)
-1.  **Unpivot**: Transformar os dados dos arquivos de preço/custo, que têm UFs como colunas, para um formato de linhas (`item`, `uf`, `valor`).
-2.  **Consolidar**: Unir os dados das planilhas "COM Desoneração" e "SEM Desoneração", adicionando a coluna booleana `desonerado`.
-3.  **Enriquecer**: Adicionar a coluna `data_referencia` (ex: `'2025-07-01'`) a todos os registros.
+#### `vw_composicao_itens_unificados`
 
-### 3.3. Etapa 3: Carga
-1.  Conectar-se ao banco de dados PostgreSQL.
-2.  Executar as operações de carga na seguinte ordem:
-    *   **UPSERT** nas tabelas de catálogo (`insumos`, `composicoes`).
-    *   **INSERT** na tabela de histórico (`manutencoes_historico`), ignorando registros duplicados.
-    *   **DELETE/INSERT** na tabela de estrutura (`composicao_itens`) para garantir que ela esteja sempre atualizada.
-    *   **INSERT** nas tabelas de dados mensais (`precos_insumos_mensal`, `custos_composicoes_mensal`).
+```sql
+CREATE OR REPLACE VIEW vw_composicao_itens_unificados AS
+SELECT
+    composicao_pai_codigo,
+    insumo_filho_codigo AS item_codigo,
+    'INSUMO' AS tipo_item,
+    coeficiente
+FROM
+    composicao_insumos
+UNION ALL
+SELECT
+    composicao_pai_codigo,
+    composicao_filho_codigo AS item_codigo,
+    'COMPOSICAO' AS tipo_item,
+    coeficiente
+FROM
+    composicao_subcomposicoes;
+```
 
-## 4. Diretrizes para a API e Consultas
+-----
 
-Com os dados estruturados desta forma, a API pode fornecer endpoints poderosos e performáticos.
+## 3\. Processo de ETL (Fluxo de Execução Detalhado)
 
-#### Exemplo de Endpoint para Orçamento: `GET /custo_composicao`
-*   **Parâmetros**: `codigo`, `uf`, `data_referencia`, `desonerado`
-*   **Lógica**: A consulta SQL simplesmente buscaria o registro correspondente na tabela `custos_composicoes_mensal`.
+O fluxo de execução foi projetado para adotar uma abordagem **"Manutenções Primeiro"**, garantindo a máxima consistência dos dados.
 
-#### Exemplo de Endpoint para Planejamento: `GET /composicao/{codigo}/estrutura`
-*   **Lógica**: Uma consulta SQL recursiva (`WITH RECURSIVE`) na tabela `composicao_itens` pode "explodir" toda a árvore de dependências de uma composição, listando todos os insumos de mão de obra e seus respectivos coeficientes, que são a base para o cálculo de produtividade e tempo de execução.
+### 3.1. Parâmetros de Entrada
 
-#### Exemplo de Endpoint para Histórico: `GET /insumo/{codigo}/historico`
-*   **Lógica**: A consulta buscaria todos os registros na tabela `manutencoes_historico` para o código de insumo fornecido, permitindo rastrear todas as mudanças que ele sofreu.
+  * **Caminho do Arquivo de Referência:** `path/to/SINAPI_Referência_AAAA_MM.xlsx`
+  * **Caminho do Arquivo de Manutenções:** `path/to/SINAPI_manutencoes_AAAA_MM.xlsx`
+  * **Data de Referência:** Derivada do nome do arquivo (ex: `2025-07-01`).
+  * **String de Conexão com o Banco de Dados.**
+
+### **FASE 1: Processamento do Histórico de Manutenções**
+
+Esta fase estabelece a fonte da verdade sobre o status de cada item.
+
+1.  **Extração:**
+
+      * Carregar a planilha `Manutenções` do arquivo `SINAPI_manutencoes_AAAA_MM.xlsx`.
+      * **Atenção:** O cabeçalho está na linha 6, portanto, use `header=5` na leitura.
+
+2.  **Transformação:**
+
+      * Renomear as colunas para o padrão do banco de dados (ex: `Código` -\> `item_codigo`).
+      * Converter a coluna `Referência` (formato `MM/AAAA`) para um `DATE` válido (primeiro dia do mês, ex: `07/2025` -\> `2025-07-01`).
+      * Limpar e padronizar os dados textuais.
+
+3.  **Carga:**
+
+      * Inserir os dados transformados na tabela `manutencoes_historico`.
+      * Utilizar uma cláusula `ON CONFLICT DO NOTHING` na chave primária composta para evitar a duplicação de registros históricos caso o ETL seja re-executado.
+
+### **FASE 2: Sincronização de Status dos Catálogos**
+
+Esta fase utiliza os dados carregados na Fase 1 para atualizar o estado atual dos itens.
+
+1.  **Lógica de Atualização:** Executar um script (em Python/SQL) que:
+      * Para cada item (`código`, `tipo`) presente na tabela `manutencoes_historico`, identifique a **manutenção mais recente** (última `data_referencia`).
+      * Verifique se o `tipo_manutencao` dessa última entrada indica uma desativação (ex: `tipo_manutencao ILIKE '%DESATIVAÇÃO%'`).
+      * Se for uma desativação, executar um `UPDATE` na tabela correspondente (`insumos` ou `composicoes`), ajustando o campo `status` para `'DESATIVADO'`.
+
+### **FASE 3: Processamento dos Dados de Referência (Preços, Custos e Estrutura)**
+
+Esta fase processa o arquivo principal do SINAPI, operando sobre catálogos cujo status já foi sincronizado.
+
+1.  **Extração:**
+
+      * Carregar as planilhas de referência (`ISD`, `ICD`, `ISE`, `CSD`, `CCD`, `CSE`, `Analítico`) do arquivo `SINAPI_Referência_AAAA_MM.xlsx`.
+      * **Atenção:** O cabeçalho dos dados começa na linha 9, portanto, use `header=9`.
+
+2.  **Transformação:**
+
+      * **Enriquecimento de Contexto (Regime):** Adicionar uma coluna `regime` a cada DataFrame de preço/custo, mapeando o nome da planilha para o valor (`'NAO_DESONERADO'`, `'DESONERADO'`, `'SEM_ENCARGOS'`).
+      * **Unpivot (Melt):** Transformar os DataFrames do formato "largo" (UFs em colunas) para o formato "longo" (UFs em linhas).
+      * **Consolidação:** Unir os DataFrames de mesmo tipo (insumos com insumos, composições com composições).
+      * **Separação dos Dados:** A partir dos DataFrames consolidados, criar os DataFrames finais para cada tabela de destino (`df_catalogo_insumos`, `df_precos_mensal`, etc.).
+
+3.  **Carga (Ordem Crítica):**
+
+    1.  **Carregar Catálogos (UPSERT):**
+          * Carregar `df_catalogo_insumos` na tabela `insumos` e `df_catalogo_composicoes` em `composicoes`.
+          * **Lógica:** Usar `ON CONFLICT (codigo) DO UPDATE SET descricao = EXCLUDED.descricao, ...`.
+          * **Importante:** Não atualizar a coluna `status` nesta etapa. Novos itens serão inseridos com o `status` default (`'ATIVO'`).
+    2.  **Recarregar Estrutura (TRUNCATE/INSERT):**
+          * Executar `TRUNCATE TABLE composicao_insumos, composicao_subcomposicoes;`.
+          * Inserir os novos DataFrames de estrutura.
+            .
+    3.  **Carregar Dados Mensais (INSERT):**
+          * Inserir os DataFrames de preços e custos em suas respectivas tabelas. Utilizar `ON CONFLICT DO NOTHING` para segurança em re-execuções.
+
+## 4\. Diretrizes para a API e Consultas
+
+O modelo de dados permite a criação de endpoints poderosos e performáticos.
+
+#### Exemplo 1: Obter o custo de uma composição
+
+  * **Endpoint:** `GET /custo_composicao`
+  * **Parâmetros:** `codigo`, `uf`, `data_referencia`, `regime`
+  * **Lógica:** A consulta pode buscar o registro na tabela `custos_composicoes_mensal` e juntar com `composicoes` para alertar o usuário sobre o `status` do item.
+
+#### Exemplo 2: Explodir a estrutura completa de uma composição
+
+  * **Endpoint:** `GET /composicao/{codigo}/estrutura`
+  * **Lógica:** Uma consulta (potencialmente recursiva) na `VIEW vw_composicao_itens_unificados` pode montar toda a árvore de dependências de uma composição.
+
+#### Exemplo 3: Rastrear o histórico de um insumo
+
+  * **Endpoint:** `GET /insumo/{codigo}/historico`
+  * **Lógica:** Uma consulta direta na tabela `manutencoes_historico`, ordenada pela data de referência.
+
+<!-- end list -->
+
+```sql
+SELECT * FROM manutencoes_historico
+WHERE item_codigo = :codigo AND tipo_item = 'INSUMO'
+ORDER BY data_referencia DESC;
+```
+
+---
 
 ## 5. Conclusão
 
