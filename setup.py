@@ -21,7 +21,7 @@ setup(
     ],
     python_requires='>=3.8',  # Atualizado para versão mais moderna
     author="Lucas Antonio M. Pereira",
-    author_email="contato@arqlamp.com",
+    author_email="contato@mundoaec.com",
     description="Toolkit para automação do SINAPI",
     long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type="text/markdown",
