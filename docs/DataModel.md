@@ -202,35 +202,84 @@ Esta fase processa o arquivo principal do SINAPI, operando sobre catálogos cujo
     3.  **Carregar Dados Mensais (INSERT):**
           * Inserir os DataFrames de preços e custos em suas respectivas tabelas. Utilizar `ON CONFLICT DO NOTHING` para segurança em re-execuções.
 
-## 4\. Diretrizes para a API e Consultas
+## 4\. Diretrizes para API e Consultas
 
-O modelo de dados permite a criação de endpoints poderosos e performáticos.
+O modelo de dados robusto criado pelo `autoSINAPI` serve como uma base poderosa tanto para o uso programático (toolkit) quanto para a criação de APIs RESTful performáticas. Esta seção descreve a interface principal do toolkit e exemplifica endpoints que podem ser construídos sobre os dados processados.
 
-#### Exemplo 1: Obter o custo de uma composição
+### 4.1. Interface Programática (Toolkit)
 
-  * **Endpoint:** `GET /custo_composicao`
-  * **Parâmetros:** `codigo`, `uf`, `data_referencia`, `regime`
-  * **Lógica:** A consulta pode buscar o registro na tabela `custos_composicoes_mensal` e juntar com `composicoes` para alertar o usuário sobre o `status` do item.
+A função `run_etl` é a interface pública principal para executar o pipeline de forma programática.
 
-#### Exemplo 2: Explodir a estrutura completa de uma composição
+| Parâmetro | Tipo | Descrição | Padrão |
+| :--- | :--- | :--- | :--- |
+| **`db_config`** | `Dict` | Dicionário com as credenciais de conexão do PostgreSQL. | *Obrigatório* |
+| **`sinapi_config`** | `Dict` | Dicionário com as configurações de referência dos dados SINAPI. | *Obrigatório* |
+| **`mode`** | `str` | Modo de operação: `'local'` (baixa os arquivos) ou `'server'` (usa arquivos locais). | `'local'` |
+| **`log_level`** | `str` | Nível de detalhe dos logs (`'INFO'`, `'DEBUG'`, etc.). | `'INFO'` |
 
-  * **Endpoint:** `GET /composicao/{codigo}/estrutura`
-  * **Lógica:** Uma consulta (potencialmente recursiva) na `VIEW vw_composicao_itens_unificados` pode montar toda a árvore de dependências de uma composição.
+-----
 
-#### Exemplo 3: Rastrear o histórico de um insumo
+#### **Estrutura do `db_config`**
 
-  * **Endpoint:** `GET /insumo/{codigo}/historico`
-  * **Lógica:** Uma consulta direta na tabela `manutencoes_historico`, ordenada pela data de referência.
-
-<!-- end list -->
-
-```sql
-SELECT * FROM manutencoes_historico
-WHERE item_codigo = :codigo AND tipo_item = 'INSUMO'
-ORDER BY data_referencia DESC;
+```python
+{
+    "host": "seu_host_db",      # Ex: "localhost" ou "db" (para Docker)
+    "port": 5432,               # Porta do PostgreSQL
+    "database": "seu_db_name",  # Nome do banco de dados
+    "user": "seu_usuario",      # Usuário do banco de dados
+    "password": "sua_senha"     # Senha do usuário
+}
 ```
 
----
+*Todos os campos são obrigatórios.*
+
+-----
+
+#### **Estrutura do `sinapi_config`**
+
+```python
+{
+    "year": 2023,                 # Ano de referência (obrigatório)
+    "month": 7,                   # Mês de referência (obrigatório)
+    "type": "REFERENCIA",         # Tipo de caderno ("REFERENCIA" ou "DESONERADO")
+    "duplicate_policy": "substituir" # Política de duplicatas ("substituir" ou "append")
+}
+```
+
+*`year` e `month` são obrigatórios. Os demais possuem valores padrão.*
+
+-----
+
+### 4.2. Exemplos de Casos de Uso (API REST)
+
+A estrutura do banco de dados permite a criação de endpoints de API poderosos para consultar os dados de forma eficiente.
+
+#### **Exemplo 1: Obter o custo de uma composição**
+
+| | |
+| :--- | :--- |
+| **Endpoint** | `GET /custo_composicao` |
+| **Parâmetros** | `codigo`, `uf`, `data_referencia`, `regime` |
+| **Lógica** | Busca direta na tabela `custos_composicoes_mensal`, com um `JOIN` opcional na tabela `composicoes` para verificar o `status` do item (ativo/inativo). |
+
+\<br\>
+
+#### **Exemplo 2: Explodir a estrutura completa de uma composição**
+
+| | |
+| :--- | :--- |
+| **Endpoint** | `GET /composicao/{codigo}/estrutura` |
+| **Lógica** | Utiliza a view `vw_composicao_itens_unificados` para montar a árvore completa de insumos e subcomposições de um item. Uma consulta recursiva (CTE) é ideal para esta finalidade. |
+
+\<br\>
+
+#### **Exemplo 3: Rastrear o histórico de um insumo**
+
+| | |
+| :--- | :--- |
+| **Endpoint** | `GET /insumo/{codigo}/historico` |
+| **Lógica** | Consulta direta na tabela `manutencoes_historico` para retornar todas as manutenções (inclusão, exclusão, alteração) de um insumo específico, ordenadas por data. |
+| **Exemplo SQL** | `sql<br>SELECT * FROM manutencoes_historico<br>WHERE item_codigo = :codigo AND tipo_item = 'INSUMO'<br>ORDER BY data_referencia DESC;<br>` |
 
 ## 5. Conclusão
 
