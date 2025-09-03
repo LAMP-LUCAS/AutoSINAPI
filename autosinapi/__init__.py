@@ -15,7 +15,9 @@ from autosinapi.config import Config
 from autosinapi.core.database import Database
 from autosinapi.core.downloader import Downloader
 from autosinapi.core.processor import Processor
-from autosinapi.exceptions import AutoSinapiError, ConfigurationError, DownloadError, ProcessingError, DatabaseError
+from autosinapi.exceptions import (AutoSinapiError, ConfigurationError,
+                                   DatabaseError, DownloadError,
+                                   ProcessingError)
 
 __all__ = [
     "Config",
