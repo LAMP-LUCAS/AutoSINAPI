@@ -18,4 +18,4 @@ RUN pip install --no-cache-dir psycopg2-binary
 RUN pip install --no-cache-dir .
 
 # Define o comando padrao para executar o pipeline
-CMD ["python", "tools/autosinapi_pipeline.py"]
+CMD ["python", "-m", "autosinapi.etl_pipeline"]
