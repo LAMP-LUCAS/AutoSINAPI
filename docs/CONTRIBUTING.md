@@ -80,7 +80,87 @@ Utilizamos o padrão Conventional Commits para padronizar as mensagens de commit
 
 ---
 
-## 4. Nomenclatura no Código
+## 4. Fluxo de Desenvolvimento
+
+Para garantir um desenvolvimento organizado, eficiente e com alta qualidade, seguimos um fluxo de trabalho bem definido, que integra as convenções de nomenclatura de branches e commits já estabelecidas.
+
+### 4.1. Ciclo de Vida de uma Funcionalidade/Correção
+
+1.  **Criação da Branch:**
+    *   Para novas funcionalidades: Crie uma branch `feature/<nome-da-feature>` a partir de `develop`.
+    *   Para correções de bugs não críticos: Crie uma branch `fix/<nome-da-correcao>` a partir de `develop`.
+    *   Para correções críticas em produção: Crie uma branch `hotfix/<descricao-curta>` a partir de `main`.
+
+2.  **Desenvolvimento e Commits:**
+    *   Desenvolva a funcionalidade ou correção na sua branch dedicada.
+    *   Realize commits frequentes e atômicos, seguindo o padrão de [Mensagens de Commit](#3-mensagens-de-commit). Cada commit deve representar uma mudança lógica única e completa.
+
+3.  **Testes Locais:**
+    *   Antes de abrir um Pull Request, certifique-se de que todos os testes locais (unitários e de integração) estão passando.
+    *   Execute os linters e formatadores de código para garantir a conformidade com os padrões do projeto.
+
+4.  **Pull Request (PR):**
+    *   Quando a funcionalidade ou correção estiver completa e testada localmente, abra um Pull Request da sua branch (`feature`, `fix`, `hotfix`) para a branch `develop` (ou `main` para `hotfix`).
+    *   Utilize o template de Pull Request (`.github/pull_request_template.md`) para fornecer todas as informações necessárias, facilitando a revisão do código.
+    *   Descreva claramente as mudanças, o problema que resolve (se for um bug) e como testar.
+
+5.  **Revisão de Código e Merge:**
+    *   Aguarde a revisão do código por outro(s) membro(s) da equipe.
+    *   Enderece quaisquer comentários ou solicitações de alteração.
+    *   Após a aprovação, a PR será mesclada na branch de destino (`develop` ou `main`).
+
+### 4.2. Gerenciamento de Releases
+
+O processo de release é automatizado para garantir consistência e agilidade.
+
+1.  **Preparação da Release (Branch `release`):**
+    *   Quando um conjunto de funcionalidades e correções na branch `develop` estiver pronto para ser lançado, crie uma branch `release/<versao>` a partir de `develop`.
+    *   Nesta branch, realize apenas as últimas verificações, atualizações de documentação (ex: `CHANGELOG.md` se houver) e ajustes finais.
+
+2.  **Criação da Tag de Versão:**
+    *   Após a branch `release` estar pronta, crie uma tag de versão seguindo o [Versionamento Semântico](#1-versionamento-semântico-semver) (ex: `v1.0.0`, `v1.1.0`).
+    *   **Importante:** O push desta tag para o repositório irá automaticamente disparar o fluxo de trabalho de release.
+
+3.  **Release Automatizada:**
+    *   O fluxo de trabalho `.github/workflows/release.yml` será executado automaticamente.
+    *   Ele construirá o pacote Python, criará um novo release no GitHub (associado à tag) e publicará o pacote no PyPI.
+
+4.  **Merge Pós-Release:**
+    *   Após a release ser concluída com sucesso, a branch `release` deve ser mesclada de volta em `main` (para registrar a versão final) e em `develop` (para garantir que quaisquer ajustes feitos na branch `release` sejam propagados para o desenvolvimento contínuo).
+
+---
+
+## 5. Ferramentas de Automação e Templates
+
+Para otimizar o fluxo de trabalho e garantir a padronização, utilizamos as seguintes ferramentas e templates:
+
+### 5.1. `.github/workflows/release.yml`
+
+Este arquivo define o fluxo de trabalho de **Release Automatizada** do projeto. Ele é um script de GitHub Actions que é executado sempre que uma nova tag de versão (ex: `v1.0.0`) é enviada para o repositório.
+
+**O que ele faz:**
+*   **Construção do Pacote:** Compila o código-fonte Python em pacotes distribuíveis (source distribution e wheel).
+*   **Criação de Release no GitHub:** Gera um novo lançamento na página de Releases do GitHub, associado à tag de versão.
+*   **Publicação no PyPI:** Faz o upload dos pacotes construídos para o Python Package Index (PyPI), tornando-os disponíveis para instalação via `pip`.
+
+**Benefícios:** Garante que cada nova versão seja lançada de forma consistente, reduzindo erros manuais e acelerando o processo de distribuição.
+
+### 5.2. `.github/pull_request_template.md`
+
+Este arquivo é um **template padrão para Pull Requests (PRs)**. Quando um desenvolvedor cria uma nova Pull Request no GitHub, este template é automaticamente preenchido, guiando o desenvolvedor a fornecer as informações essenciais.
+
+**O que ele faz:**
+*   **Padronização:** Garante que todas as PRs sigam uma estrutura consistente.
+*   **Clareza:** Solicita informações cruciais como descrição das mudanças, tipo de alteração, testes realizados, breaking changes, etc.
+*   **Facilita a Revisão:** Ajuda os revisores a entender rapidamente o propósito e o escopo da PR, agilizando o processo de code review.
+*   **Checklist:** Inclui um checklist para que o desenvolvedor possa verificar se todos os requisitos foram atendidos antes de submeter a PR.
+
+**Benefícios:** Melhora a qualidade das PRs, acelera o processo de revisão e contribui para a manutenção de um histórico de projeto claro e detalhado.
+
+---
+
+## 6. Nomenclatura no Código
+
 
 ### 4.1. CSS (Para clientes Frontend)
 
