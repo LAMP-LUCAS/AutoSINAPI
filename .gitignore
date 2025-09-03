@@ -95,3 +95,5 @@ Thumbs.db
 downloads/
 tools/docker/.env
 AutoSINAPI.code-workspace
+.coverage
+coverage.xml

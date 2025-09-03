@@ -108,7 +108,22 @@ O versionamento deste projeto é **totalmente automatizado com base nas tags do 
 
 ## 🤝 Como Contribuir
 
-Contribuições são bem-vindas! Consulte o nosso [repositório no GitHub](https://github.com/LAMP-LUCAS/AutoSINAPI).
+O **AutoSINAPI** é um projeto open-source que cresce com a comunidade! Sua contribuição é fundamental, seja ela qual for. Cada ajuda nos impulsiona a construir uma ferramenta cada vez mais robusta e útil para todos.
+
+**Como você pode ajudar?**
+
+*   **Reporte Bugs:** Encontrou um problema? Sua observação é valiosa! Abra uma [Issue no GitHub](https://github.com/LAMP-LUCAS/AutoSINAPI/issues) descrevendo o bug. Isso nos ajuda a identificar e corrigir falhas rapidamente.
+*   **Sugira Novas Funcionalidades:** Tem uma ideia para melhorar o AutoSINAPI? Compartilhe conosco abrindo uma [Issue de Feature Request](https://github.com/LAMP-LUCAS/AutoSINAPI/issues).
+*   **Contribua com Código:** Se você é desenvolvedor, suas habilidades são muito bem-vindas! Contribua com novas funcionalidades, correções de bugs ou melhorias no código. Consulte nosso guia de contribuição para começar: [Como Contribuir](docs/CONTRIBUTING.md).
+*   **Documentação:** Ajude a melhorar nossa documentação, tornando-a mais clara e completa.
+*   **Divulgue:** Compartilhe o AutoSINAPI com sua rede! Quanto mais pessoas conhecerem, maior nossa comunidade.
+*   **Apoie com um Cafezinho:** Gosta do projeto e quer nos ajudar a manter o ritmo? Considere fazer uma pequena doação para o "cafezinho" da equipe. Seu apoio financeiro, por menor que seja, faz uma grande diferença!  
+🔑 Chave Pix: `a03ffaea-d46f-4dc6-a372-2b4fa8b0385f` copie e cole no seu app bancário ou \
+📋 Use nosso link de pagamento pelo [MercadoPago](link.mercadopago.com.br/autosinapi)
+
+**Junte-se a nós e faça parte desta jornada!**
+
+Para detalhes sobre como configurar seu ambiente de desenvolvimento, padrões de código, fluxo de trabalho e muito mais, consulte nosso guia completo: [Como Contribuir](docs/CONTRIBUTING.md).
 
 ## 📝 Licença
 
