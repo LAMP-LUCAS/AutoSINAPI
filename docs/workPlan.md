@@ -279,6 +279,35 @@ Garantir que a função principal `run_etl` orquestra corretamente as chamadas a
 
 ---
 
+## 6. Atualização e Correção dos Testes (Setembro 2025)
+
+**Objetivo:** Atualizar a suíte de testes para refletir a nova arquitetura do pipeline AutoSINAPI, garantindo que todos os testes passem e que a cobertura do código seja mantida ou ampliada.
+
+### Situação Atual dos Testes
+
+Após uma refatoração significativa do pipeline de ETL, a suíte de testes encontra-se parcialmente quebrada. Os principais problemas são:
+
+-   **`tests/test_file_input.py` e `tests/test_pipeline.py`**: Falham devido à remoção da função `run_etl` e a mudanças na lógica interna do pipeline. As chamadas diretas à função foram substituídas por uma classe `Pipeline`, e os testes precisam ser adaptados para instanciar e mockar essa classe corretamente.
+-   **`tests/core/test_database.py`**: Apresenta falhas relacionadas a mudanças na assinatura de métodos (ex: `save_data` agora exige um parâmetro `policy`) e a mensagens de erro que foram atualizadas.
+-   **`tests/core/test_processor.py`**: Contém falhas devido à remoção de métodos privados que eram testados diretamente e a mudanças na assinatura de métodos públicos como `process_composicao_itens`.
+
+### Situação Desejada
+
+-   **Todos os testes passando**: A suíte de testes deve ser executada sem falhas.
+-   **Cobertura de código**: A cobertura de testes deve ser mantida ou ampliada para abranger a nova arquitetura.
+-   **Manutenibilidade**: Os testes devem ser fáceis de entender e manter.
+
+### Plano de Ação Detalhado
+
+| Arquivo | Ação Corretiva |
+| --- | --- |
+| **`tests/core/test_database.py`** | **1. Corrigir `test_save_data_failure`**: Atualizar a mensagem de erro esperada no `pytest.raises` para refletir a nova mensagem da exceção `DatabaseError`.<br>**2. Corrigir `test_save_data_success` e `test_save_data_failure`**: Adicionar o argumento `policy` na chamada do método `save_data`. |
+| **`tests/core/test_processor.py`** | **1. Corrigir `test_process_composicao_itens`**: Ajustar a forma como o arquivo Excel de teste é criado, garantindo que o cabeçalho e o nome da planilha (`Analítico`) estejam corretos para que o `Processor` possa lê-lo. |
+| **`tests/test_pipeline.py`** | **1. Ajustar `mock_pipeline` fixture**: <br> - Modificar o mock de `process_composicao_itens` para que o `parent_composicoes_details` retornado contenha a coluna `codigo`. <br> - Garantir que o mock de `_unzip_file` retorne um caminho que contenha um arquivo "Referência" simulado. <br> **2. Atualizar `caplog`**: Corrigir as mensagens de erro esperadas nas asserções dos testes de falha (`test_run_etl_download_error`, `test_run_etl_processing_error`, `test_run_etl_database_error`). |
+| **`tests/test_file_input.py`** | **1. Ajustar `mock_pipeline` fixture**: Aplicar as mesmas correções do `test_pipeline.py` para garantir a consistência dos mocks. <br> **2. Corrigir `test_direct_file_input`**: Garantir que o método `save_data` seja chamado, corrigindo o `KeyError` no pipeline. <br> **3. Atualizar `caplog`**: Corrigir a mensagem de erro esperada no teste `test_invalid_input_file`. |
+
+---
+
 ## Plano de Trabalho Sugerido
 
 ### 1. Configuração do Ambiente de Teste
