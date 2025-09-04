@@ -208,47 +208,166 @@ O modelo de dados robusto criado pelo `autoSINAPI` serve como uma base poderosa 
 
 ### 4.1. Interface Programática (Toolkit)
 
-A função `run_etl` é a interface pública principal para executar o pipeline de forma programática.
+A maneira recomendada de interagir com o pacote é através da função `run_etl`, localizada no nível raiz do pacote (`from autosinapi import run_etl`). Ela atua como uma interface de alto nível que simplifica a execução de todo o pipeline, gerenciando a configuração, a execução e o retorno de resultados de forma padronizada.
+
+Existem duas formas principais de fornecer as configurações para a função `run_etl`:
+
+1.  **Via Dicionários Python:** Ideal para integrar o `autoSINAPI` em outras aplicações Python, como APIs, scripts de automação ou notebooks de análise.
+2.  **Via Variáveis de Ambiente:** Perfeito para ambientes automatizados, contêineres (Docker) e pipelines de CI/CD, onde as configurações são injetadas no ambiente de execução.
+
+-----
+
+#### **Parâmetros da Função `run_etl`**
 
 | Parâmetro | Tipo | Descrição | Padrão |
 | :--- | :--- | :--- | :--- |
-| **`db_config`** | `Dict` | Dicionário com as credenciais de conexão do PostgreSQL. | *Obrigatório* |
-| **`sinapi_config`** | `Dict` | Dicionário com as configurações de referência dos dados SINAPI. | *Obrigatório* |
-| **`mode`** | `str` | Modo de operação: `'local'` (baixa os arquivos) ou `'server'` (usa arquivos locais). | `'local'` |
-| **`log_level`** | `str` | Nível de detalhe dos logs (`'INFO'`, `'DEBUG'`, etc.). | `'INFO'` |
+| **`db_config`** | `Dict` | Dicionário com as credenciais de conexão do PostgreSQL. Se `None`, tentará carregar a partir de variáveis de ambiente (`POSTGRES_*`). | `None` |
+| **`sinapi_config`**| `Dict` | Dicionário com as configurações de referência dos dados SINAPI. Se `None`, tentará carregar a partir de variáveis de ambiente (`AUTOSINAPI_*`). | `None` |
+| **`mode`** | `str` | Modo de operação: `'local'` (baixa os arquivos) ou `'server'` (usa arquivos locais, útil em ambientes onde o download é feito por outro processo). | `'local'` |
+| **`log_level`** | `str` | Nível de detalhe dos logs. Opções: `'DEBUG'`, `'INFO'`, `'WARNING'`, `'ERROR'`, `'CRITICAL'`. | `'INFO'` |
 
 -----
 
-#### **Estrutura do `db_config`**
+#### **Estrutura dos Dicionários de Configuração**
+
+**1. Dicionário `db_config`**
+*Todos os campos são obrigatórios ao usar este método.*
 
 ```python
 {
-    "host": "seu_host_db",      # Ex: "localhost" ou "db" (para Docker)
-    "port": 5432,               # Porta do PostgreSQL
-    "database": "seu_db_name",  # Nome do banco de dados
-    "user": "seu_usuario",      # Usuário do banco de dados
-    "password": "sua_senha"     # Senha do usuário
+    # Endereço do servidor de banco de dados.
+    # Ex: "localhost" para uma máquina local ou "db" em um ambiente Docker Compose.
+    "host": "seu_host_db",
+    
+    # Porta em que o PostgreSQL está escutando. A padrão é 5432.
+    "port": 5432,
+    
+    # O nome do banco de dados que será utilizado pelo pipeline.
+    "database": "seu_db_name",
+    
+    # Nome de usuário com permissões para criar tabelas e inserir dados.
+    "user": "seu_usuario",
+    
+    # Senha correspondente ao usuário.
+    "password": "sua_senha"
 }
 ```
 
-*Todos os campos são obrigatórios.*
-
------
-
-#### **Estrutura do `sinapi_config`**
-
-```python
-{
-    "year": 2023,                 # Ano de referência (obrigatório)
-    "month": 7,                   # Mês de referência (obrigatório)
-    "type": "REFERENCIA",         # Tipo de caderno ("REFERENCIA" ou "DESONERADO")
-    "duplicate_policy": "substituir" # Política de duplicatas ("substituir" ou "append")
-}
-```
-
+**2. Dicionário `sinapi_config`**
 *`year` e `month` são obrigatórios. Os demais possuem valores padrão.*
 
+```python
+{
+    # Ano de referência dos dados do SINAPI a serem processados.
+    "year": 2025,
+    
+    # Mês de referência (número inteiro de 1 a 12).
+    "month": 7,
+    
+    # Tipo de caderno SINAPI. Padrão: "REFERENCIA".
+    # Opções: "REFERENCIA", "DESONERADO".
+    "type": "REFERENCIA",
+    
+    # Política para lidar com dados de um período já existente. (ainda não implementado)
+    # Padrão: "substituir". Opções: "substituir", "append".
+    "duplicate_policy": "substituir"
+}
+```
+
 -----
+
+#### **Exemplos de Interação**
+
+**Exemplo 1: Execução programática via Dicionários**
+
+Este é o método ideal para usar o `autoSINAPI` como uma biblioteca dentro de outra aplicação Python.
+
+```python
+from autosinapi import run_etl
+
+# 1. Defina as configurações do banco de dados
+db_settings = {
+    "host": "localhost",
+    "port": 5432,
+    "database": "sinapi_db",
+    "user": "postgres",
+    "password": "mysecretpassword"
+}
+
+# 2. Defina as configurações do SINAPI para o período desejado
+sinapi_settings = {
+    "year": 2025,
+    "month": 7
+}
+
+# 3. Execute o pipeline e capture o resultado
+print("Iniciando o pipeline ETL do SINAPI...")
+result = run_etl(
+    db_config=db_settings,
+    sinapi_config=sinapi_settings,
+    log_level='DEBUG'  # Use DEBUG para ver logs mais detalhados
+)
+
+# 4. Verifique o resultado da execução
+print("\n--- Resultado da Execução ---")
+print(f"Status: {result['status']}")
+print(f"Mensagem: {result['message']}")
+print(f"Registros Inseridos: {result['records_inserted']}")
+print(f"Tabelas Atualizadas: {result['tables_updated']}")
+```
+
+**Exemplo 2: Execução via Variáveis de Ambiente**
+
+Este método é ideal para scripts de automação e ambientes de contêiner. Primeiro, configure as variáveis de ambiente no seu terminal.
+
+*No Linux ou macOS:*
+
+```bash
+export POSTGRES_HOST=localhost
+export POSTGRES_PORT=5432
+export POSTGRES_DB=sinapi_db
+export POSTGRES_USER=postgres
+export POSTGRES_PASSWORD=mysecretpassword
+export AUTOSINAPI_YEAR=2025
+export AUTOSINAPI_MONTH=7
+```
+
+*No Windows (Prompt de Comando):*
+
+```cmd
+set POSTGRES_HOST=localhost
+set POSTGRES_DB=sinapi_db
+... (e assim por diante)
+```
+
+Em seguida, o script Python para executar o pipeline se torna extremamente simples:
+
+```python
+from autosinapi import run_etl
+
+# A função run_etl irá carregar todas as configurações
+# automaticamente a partir das variáveis de ambiente definidas.
+print("Iniciando o pipeline ETL do SINAPI a partir de variáveis de ambiente...")
+result = run_etl()
+
+# O resultado é tratado da mesma forma
+print("\n--- Resultado da Execução ---")
+print(f"Status: {result['status']}")
+# ... etc ...
+```
+
+-----
+
+#### **Estrutura do Retorno**
+
+A função `run_etl` sempre retorna um dicionário com a seguinte estrutura, permitindo que a aplicação que a chamou saiba exatamente o que aconteceu.
+
+| Chave | Tipo | Descrição |
+| :--- | :--- | :--- |
+| **`status`** | `str` | O status final da execução. Ex: `"SUCESSO"`, `"FALHA"`, `"SUCESSO (SEM DADOS)"`. |
+| **`message`** | `str` | Uma mensagem descritiva sobre o resultado da execução. |
+| **`records_inserted`**| `int` | O número total de registros inseridos no banco de dados durante a execução. |
+| **`tables_updated`** | `List[str]` | Uma lista com os nomes de todas as tabelas que foram modificadas. |
 
 ### 4.2. Exemplos de Casos de Uso (API REST)
 
