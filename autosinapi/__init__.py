@@ -34,6 +34,7 @@ __all__ = [
 
 import os
 import logging
+import uuid # Added for run_id generation
 from contextlib import contextmanager
 from typing import Dict, Any
 
@@ -58,28 +59,68 @@ def set_env_vars(env_vars: Dict[str, str]):
             else:
                 os.environ[key] = value
 
-def run_etl(db_config: Dict[str, Any], sinapi_config: Dict[str, Any], mode: str = 'local', log_level: str = 'INFO'):
-    """
-    Executa o pipeline ETL do AutoSINAPI.
+def run_etl(db_config: Dict[str, Any] = None, sinapi_config: Dict[str, Any] = None, mode: str = 'local', log_level: str = 'INFO'):
+    # Generate a unique run_id for this execution
+    run_id = str(uuid.uuid4())[:8]
 
-    Args:
-        db_config (Dict[str, Any]): Dicionário de configuração do banco de dados.
-        sinapi_config (Dict[str, Any]): Dicionário de configuração do SINAPI.
-        mode (str): Modo de operação do pipeline ('local' ou 'server'). Padrão é 'local'.
-        log_level (str): Nível de log para a execução do pipeline (e.g., 'INFO', 'DEBUG', 'WARNING'). Padrão é 'INFO'.
-    """
-    # Validate inputs
-    if not isinstance(db_config, dict):
+    # Read skip_download from environment variable
+    skip_download_env = os.getenv('AUTOSINAPI_SKIP_DOWNLOAD', 'False').lower()
+    skip_download = (skip_download_env == 'true' or skip_download_env == '1')
+
+    # If configs are not provided, try to load from environment variables
+    if db_config is None:
+        try:
+            db_config = {
+                'host': os.getenv('POSTGRES_HOST', 'db'),
+                'port': int(os.getenv('POSTGRES_PORT', 5432)),
+                'database': os.getenv('POSTGRES_DB'),
+                'user': os.getenv('POSTGRES_USER'),
+                'password': os.getenv('POSTGRES_PASSWORD')
+            }
+            # Basic validation for required DB vars
+            if not all(db_config.get(k) for k in ['database', 'user', 'password']):
+                raise ValueError("Variáveis de ambiente do banco de dados incompletas.")
+        except (ValueError, TypeError) as e:
+            logger.error(f"Erro ao carregar db_config de variáveis de ambiente: {e}", exc_info=True)
+            return {
+                "status": "failed",
+                "message": f"Erro de configuração do banco de dados: {e}. Verifique as variáveis de ambiente POSTGRES_.",
+                "tables_updated": [],
+                "records_inserted": 0
+            }
+
+    if sinapi_config is None:
+        try:
+            sinapi_config = {
+                'year': int(os.getenv('AUTOSINAPI_YEAR')),
+                'month': int(os.getenv('AUTOSINAPI_MONTH')),
+                'type': os.getenv('AUTOSINAPI_TYPE', 'REFERENCIA'),
+                'duplicate_policy': os.getenv('AUTOSINAPI_POLICY', 'substituir')
+            }
+            # Basic validation for required SINAPI vars
+            if not all(sinapi_config.get(k) for k in ['year', 'month']):
+                raise ValueError("Variáveis de ambiente SINAPI incompletas.")
+        except (ValueError, TypeError) as e:
+            logger.error(f"Erro ao carregar sinapi_config de variáveis de ambiente: {e}", exc_info=True)
+            return {
+                "status": "failed",
+                "message": f"Erro de configuração SINAPI: {e}. Verifique as variáveis de ambiente AUTOSINAPI_.",
+                "tables_updated": [],
+                "records_inserted": 0
+            }
+
+    # Validate inputs (after potentially loading from env vars)
+    if not isinstance(db_config, dict) or not db_config:
         return {
             "status": "failed",
-            "message": "Erro de validação: db_config deve ser um dicionário.",
+            "message": "Erro de validação: db_config inválido ou vazio.",
             "tables_updated": [],
             "records_inserted": 0
         }
-    if not isinstance(sinapi_config, dict):
+    if not isinstance(sinapi_config, dict) or not sinapi_config:
         return {
             "status": "failed",
-            "message": "Erro de validação: sinapi_config deve ser um dicionário.",
+            "message": "Erro de validação: sinapi_config inválido ou vazio.",
             "tables_updated": [],
             "records_inserted": 0
         }
@@ -120,13 +161,13 @@ def run_etl(db_config: Dict[str, Any], sinapi_config: Dict[str, Any], mode: str 
     # The setup_logging function in autosinapi_pipeline.py takes debug_mode.
     # We need to map log_level to debug_mode.
     debug_mode = (log_level.upper() == 'DEBUG')
-    setup_logging(debug_mode=debug_mode)
+    setup_logging(run_id=run_id, debug_mode=debug_mode)
 
     try:
         with set_env_vars(env_vars_to_set):
             logger.info(f"Iniciando execução do pipeline com modo: {mode}"
                         f"e nível de log: {log_level}")
-            pipeline = PipelineETL() # Pipeline will read from env vars
+            pipeline = PipelineETL(debug_mode=debug_mode, run_id=run_id) # Pass run_id to PipelineETL
             result = pipeline.run()
             logger.info("Pipeline executado com sucesso.")
             return result

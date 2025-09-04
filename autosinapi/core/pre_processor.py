@@ -1,7 +1,49 @@
+# autosinapi/core/pre_processor.py
+
+"""
+pre_processor.py: Módulo de Pré-processamento de Arquivos.
+
+Este módulo oferece funcionalidades para otimizar a leitura de grandes arquivos
+Excel antes da etapa principal de transformação. Sua principal função é converter
+planilhas específicas e de alto volume de um arquivo `.xlsx` em arquivos `.csv`
+separados. Isso melhora significativamente o desempenho da leitura de dados no
+módulo `processor`, que pode ler CSVs de forma muito mais eficiente que
+planilhas Excel complexas.
+
+**Função `convert_excel_sheets_to_csv`:**
+
+- **Entradas:**
+    - `xlsx_full_path (Path)`: O caminho completo para o arquivo Excel de
+      origem (ex: `SINAPI_Referência_AAAA_MM.xlsx`).
+    - `sheets_to_convert (list[str])`: Uma lista de nomes das planilhas que
+      devem ser convertidas (ex: `['CSD', 'CCD', 'CSE']`).
+    - `output_dir (Path)`: O diretório onde os arquivos CSV resultantes serão
+      salvos.
+    - `config (Config)`: O objeto de configuração do pipeline, do qual extrai
+      parâmetros como o separador do CSV (`PREPROCESSOR_CSV_SEPARATOR`).
+
+- **Transformações/Processos:**
+    - Itera sobre a lista de planilhas a serem convertidas.
+    - Para cada nome de planilha, lê os dados brutos do arquivo Excel
+      utilizando `pandas.read_excel`.
+    - Salva o conteúdo da planilha em um novo arquivo `.csv` no diretório de
+      saída especificado. O nome do arquivo CSV será o mesmo da planilha
+      (ex: `CSD.csv`).
+    - Utiliza o separador definido no objeto `config` ao criar o arquivo CSV,
+      garantindo consistência.
+
+- **Saídas:**
+    - A função não possui um valor de retorno explícito (`None`).
+    - Seu resultado são os arquivos `.csv` criados no `output_dir`, que
+      serão consumidos posteriormente pela classe `Processor`.
+"""
+
 import pandas as pd
 import os
 import logging
 from pathlib import Path
+
+from autosinapi.config import Config
 from autosinapi.exceptions import ProcessingError
 
 logger = logging.getLogger(__name__)
@@ -9,15 +51,11 @@ logger = logging.getLogger(__name__)
 def convert_excel_sheets_to_csv(
     xlsx_full_path: Path,
     sheets_to_convert: list[str],
-    output_dir: Path
+    output_dir: Path,
+    config: Config
 ):
     """
-    Converts specific sheets from an XLSX file to CSV, ensuring formulas are read as text.
-
-    Args:
-        xlsx_full_path (Path): The full path to the XLSX file.
-        sheets_to_convert (list[str]): A list of sheet names to convert.
-        output_dir (Path): The directory where the CSV files will be saved.
+    Converts specific sheets from an XLSX file to CSV, using settings from the config object.
     """
     logger.info(f"Iniciando pré-processamento do arquivo: {xlsx_full_path}")
 
@@ -39,8 +77,8 @@ def convert_excel_sheets_to_csv(
             )
 
             csv_output_path = output_dir / f"{sheet}.csv"
-            df.to_csv(csv_output_path, index=False, header=False, sep=';')
-            logger.info(f"Planilha '{sheet}' convertida com sucesso para '{csv_output_path}' (separador: ;)")
+            df.to_csv(csv_output_path, index=False, header=False, sep=config.PREPROCESSOR_CSV_SEPARATOR)
+            logger.info(f"Planilha '{sheet}' convertida com sucesso para '{csv_output_path}' (separador: {config.PREPROCESSOR_CSV_SEPARATOR})")
 
         except Exception as e:
             raise ProcessingError(f"Falha ao processar a planilha '{sheet}'. Erro: {e}") from e
