@@ -70,7 +70,7 @@ def mock_pipeline(mocker, db_config, sinapi_config, tmp_path):
         mocker.patch.object(pipeline, "_get_sinapi_config", return_value=sinapi_config)
         mocker.patch.object(
             pipeline,
-            "_load_config",
+            "_load_base_config", # Changed from "_load_config"
             return_value={
                 "secrets_path": "dummy",
                 "default_year": sinapi_config["year"],

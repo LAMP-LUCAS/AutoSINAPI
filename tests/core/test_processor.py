@@ -7,13 +7,32 @@ import logging
 import pandas as pd
 import pytest
 
+from autosinapi.config import Config
 from autosinapi.core.processor import Processor
 
 
 @pytest.fixture
-def processor():
-    """Fixture que cria um processador com configurações básicas."""
-    config = {"year": 2025, "month": 8, "type": "REFERENCIA"}
+def db_config():
+    """Fixture com configuração de teste do banco de dados."""
+    return {
+        "host": "localhost",
+        "port": 5432,
+        "database": "test_db",
+        "user": "test_user",
+        "password": "test_pass",
+    }
+
+
+@pytest.fixture
+def sinapi_config():
+    """Fixture com configuração SINAPI mínima para testes."""
+    return {"state": "SP", "month": 8, "year": 2025, "type": "REFERENCIA"}
+
+
+@pytest.fixture
+def processor(db_config, sinapi_config):
+    """Fixture que cria um processador com configurações completas."""
+    config = Config(db_config, sinapi_config, mode="server")
     p = Processor(config)
     p.logger.setLevel(logging.DEBUG)
     return p
