@@ -202,35 +202,203 @@ Esta fase processa o arquivo principal do SINAPI, operando sobre catálogos cujo
     3.  **Carregar Dados Mensais (INSERT):**
           * Inserir os DataFrames de preços e custos em suas respectivas tabelas. Utilizar `ON CONFLICT DO NOTHING` para segurança em re-execuções.
 
-## 4\. Diretrizes para a API e Consultas
+## 4\. Diretrizes para API e Consultas
 
-O modelo de dados permite a criação de endpoints poderosos e performáticos.
+O modelo de dados robusto criado pelo `autoSINAPI` serve como uma base poderosa tanto para o uso programático (toolkit) quanto para a criação de APIs RESTful performáticas. Esta seção descreve a interface principal do toolkit e exemplifica endpoints que podem ser construídos sobre os dados processados.
 
-#### Exemplo 1: Obter o custo de uma composição
+### 4.1. Interface Programática (Toolkit)
 
-  * **Endpoint:** `GET /custo_composicao`
-  * **Parâmetros:** `codigo`, `uf`, `data_referencia`, `regime`
-  * **Lógica:** A consulta pode buscar o registro na tabela `custos_composicoes_mensal` e juntar com `composicoes` para alertar o usuário sobre o `status` do item.
+A maneira recomendada de interagir com o pacote é através da função `run_etl`, localizada no nível raiz do pacote (`from autosinapi import run_etl`). Ela atua como uma interface de alto nível que simplifica a execução de todo o pipeline, gerenciando a configuração, a execução e o retorno de resultados de forma padronizada.
 
-#### Exemplo 2: Explodir a estrutura completa de uma composição
+Existem duas formas principais de fornecer as configurações para a função `run_etl`:
 
-  * **Endpoint:** `GET /composicao/{codigo}/estrutura`
-  * **Lógica:** Uma consulta (potencialmente recursiva) na `VIEW vw_composicao_itens_unificados` pode montar toda a árvore de dependências de uma composição.
+1.  **Via Dicionários Python:** Ideal para integrar o `autoSINAPI` em outras aplicações Python, como APIs, scripts de automação ou notebooks de análise.
+2.  **Via Variáveis de Ambiente:** Perfeito para ambientes automatizados, contêineres (Docker) e pipelines de CI/CD, onde as configurações são injetadas no ambiente de execução.
 
-#### Exemplo 3: Rastrear o histórico de um insumo
+-----
 
-  * **Endpoint:** `GET /insumo/{codigo}/historico`
-  * **Lógica:** Uma consulta direta na tabela `manutencoes_historico`, ordenada pela data de referência.
+#### **Parâmetros da Função `run_etl`**
 
-<!-- end list -->
+| Parâmetro | Tipo | Descrição | Padrão |
+| :--- | :--- | :--- | :--- |
+| **`db_config`** | `Dict` | Dicionário com as credenciais de conexão do PostgreSQL. Se `None`, tentará carregar a partir de variáveis de ambiente (`POSTGRES_*`). | `None` |
+| **`sinapi_config`**| `Dict` | Dicionário com as configurações de referência dos dados SINAPI. Se `None`, tentará carregar a partir de variáveis de ambiente (`AUTOSINAPI_*`). | `None` |
+| **`mode`** | `str` | Modo de operação: `'local'` (baixa os arquivos) ou `'server'` (usa arquivos locais, útil em ambientes onde o download é feito por outro processo). | `'local'` |
+| **`log_level`** | `str` | Nível de detalhe dos logs. Opções: `'DEBUG'`, `'INFO'`, `'WARNING'`, `'ERROR'`, `'CRITICAL'`. | `'INFO'` |
 
-```sql
-SELECT * FROM manutencoes_historico
-WHERE item_codigo = :codigo AND tipo_item = 'INSUMO'
-ORDER BY data_referencia DESC;
+-----
+
+#### **Estrutura dos Dicionários de Configuração**
+
+**1. Dicionário `db_config`**
+*Todos os campos são obrigatórios ao usar este método.*
+
+```python
+{
+    # Endereço do servidor de banco de dados.
+    # Ex: "localhost" para uma máquina local ou "db" em um ambiente Docker Compose.
+    "host": "seu_host_db",
+    
+    # Porta em que o PostgreSQL está escutando. A padrão é 5432.
+    "port": 5432,
+    
+    # O nome do banco de dados que será utilizado pelo pipeline.
+    "database": "seu_db_name",
+    
+    # Nome de usuário com permissões para criar tabelas e inserir dados.
+    "user": "seu_usuario",
+    
+    # Senha correspondente ao usuário.
+    "password": "sua_senha"
+}
 ```
 
----
+**2. Dicionário `sinapi_config`**
+*`year` e `month` são obrigatórios. Os demais possuem valores padrão.*
+
+```python
+{
+    # Ano de referência dos dados do SINAPI a serem processados.
+    "year": 2025,
+    
+    # Mês de referência (número inteiro de 1 a 12).
+    "month": 7,
+    
+    # Tipo de caderno SINAPI. Padrão: "REFERENCIA".
+    # Opções: "REFERENCIA", "DESONERADO".
+    "type": "REFERENCIA",
+    
+    # Política para lidar com dados de um período já existente. (ainda não implementado)
+    # Padrão: "substituir". Opções: "substituir", "append".
+    "duplicate_policy": "substituir"
+}
+```
+
+-----
+
+#### **Exemplos de Interação**
+
+**Exemplo 1: Execução programática via Dicionários**
+
+Este é o método ideal para usar o `autoSINAPI` como uma biblioteca dentro de outra aplicação Python.
+
+```python
+from autosinapi import run_etl
+
+# 1. Defina as configurações do banco de dados
+db_settings = {
+    "host": "localhost",
+    "port": 5432,
+    "database": "sinapi_db",
+    "user": "postgres",
+    "password": "mysecretpassword"
+}
+
+# 2. Defina as configurações do SINAPI para o período desejado
+sinapi_settings = {
+    "year": 2025,
+    "month": 7
+}
+
+# 3. Execute o pipeline e capture o resultado
+print("Iniciando o pipeline ETL do SINAPI...")
+result = run_etl(
+    db_config=db_settings,
+    sinapi_config=sinapi_settings,
+    log_level='DEBUG'  # Use DEBUG para ver logs mais detalhados
+)
+
+# 4. Verifique o resultado da execução
+print("\n--- Resultado da Execução ---")
+print(f"Status: {result['status']}")
+print(f"Mensagem: {result['message']}")
+print(f"Registros Inseridos: {result['records_inserted']}")
+print(f"Tabelas Atualizadas: {result['tables_updated']}")
+```
+
+**Exemplo 2: Execução via Variáveis de Ambiente**
+
+Este método é ideal para scripts de automação e ambientes de contêiner. Primeiro, configure as variáveis de ambiente no seu terminal.
+
+*No Linux ou macOS:*
+
+```bash
+export POSTGRES_HOST=localhost
+export POSTGRES_PORT=5432
+export POSTGRES_DB=sinapi_db
+export POSTGRES_USER=postgres
+export POSTGRES_PASSWORD=mysecretpassword
+export AUTOSINAPI_YEAR=2025
+export AUTOSINAPI_MONTH=7
+```
+
+*No Windows (Prompt de Comando):*
+
+```cmd
+set POSTGRES_HOST=localhost
+set POSTGRES_DB=sinapi_db
+... (e assim por diante)
+```
+
+Em seguida, o script Python para executar o pipeline se torna extremamente simples:
+
+```python
+from autosinapi import run_etl
+
+# A função run_etl irá carregar todas as configurações
+# automaticamente a partir das variáveis de ambiente definidas.
+print("Iniciando o pipeline ETL do SINAPI a partir de variáveis de ambiente...")
+result = run_etl()
+
+# O resultado é tratado da mesma forma
+print("\n--- Resultado da Execução ---")
+print(f"Status: {result['status']}")
+# ... etc ...
+```
+
+-----
+
+#### **Estrutura do Retorno**
+
+A função `run_etl` sempre retorna um dicionário com a seguinte estrutura, permitindo que a aplicação que a chamou saiba exatamente o que aconteceu.
+
+| Chave | Tipo | Descrição |
+| :--- | :--- | :--- |
+| **`status`** | `str` | O status final da execução. Ex: `"SUCESSO"`, `"FALHA"`, `"SUCESSO (SEM DADOS)"`. |
+| **`message`** | `str` | Uma mensagem descritiva sobre o resultado da execução. |
+| **`records_inserted`**| `int` | O número total de registros inseridos no banco de dados durante a execução. |
+| **`tables_updated`** | `List[str]` | Uma lista com os nomes de todas as tabelas que foram modificadas. |
+
+### 4.2. Exemplos de Casos de Uso (API REST)
+
+A estrutura do banco de dados permite a criação de endpoints de API poderosos para consultar os dados de forma eficiente.
+
+#### **Exemplo 1: Obter o custo de uma composição**
+
+| | |
+| :--- | :--- |
+| **Endpoint** | `GET /custo_composicao` |
+| **Parâmetros** | `codigo`, `uf`, `data_referencia`, `regime` |
+| **Lógica** | Busca direta na tabela `custos_composicoes_mensal`, com um `JOIN` opcional na tabela `composicoes` para verificar o `status` do item (ativo/inativo). |
+
+\<br\>
+
+#### **Exemplo 2: Explodir a estrutura completa de uma composição**
+
+| | |
+| :--- | :--- |
+| **Endpoint** | `GET /composicao/{codigo}/estrutura` |
+| **Lógica** | Utiliza a view `vw_composicao_itens_unificados` para montar a árvore completa de insumos e subcomposições de um item. Uma consulta recursiva (CTE) é ideal para esta finalidade. |
+
+\<br\>
+
+#### **Exemplo 3: Rastrear o histórico de um insumo**
+
+| | |
+| :--- | :--- |
+| **Endpoint** | `GET /insumo/{codigo}/historico` |
+| **Lógica** | Consulta direta na tabela `manutencoes_historico` para retornar todas as manutenções (inclusão, exclusão, alteração) de um insumo específico, ordenadas por data. |
+| **Exemplo SQL** | `sql<br>SELECT * FROM manutencoes_historico<br>WHERE item_codigo = :codigo AND tipo_item = 'INSUMO'<br>ORDER BY data_referencia DESC;<br>` |
 
 ## 5. Conclusão
 
