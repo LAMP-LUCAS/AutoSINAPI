@@ -6,7 +6,7 @@
 
 ## 🚧 Cansado de Planilhas e Dados Desatualizados? Conheça o AutoSINAPI!
 
-Para arquitetos, engenheiros e construtores, a gestão de custos e orçamentos é a espinha dorsal de qualquer projeto bem-sucedido. No entanto, a realidade muitas vezes envolve:
+Para arquitetos, engenheiros e construtores, a gestão de custos e orçamentos é a espinha dorsal de qualquer projeto bem-sucedido. No entanto, a realidade muitas vezes envolve: 
 
 *   **Horas Perdidas:** Coletando, organizando e atualizando manualmente dados do SINAPI.
 *   **Decisões Baseadas em Achismos:** A falta de dados precisos e atualizados compromete a assertividade.

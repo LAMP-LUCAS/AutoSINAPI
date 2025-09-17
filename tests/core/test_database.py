@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from autosinapi.config import Config
 from autosinapi.core.database import Database
 from autosinapi.exceptions import DatabaseError
 
@@ -25,12 +26,19 @@ def db_config():
 
 
 @pytest.fixture
-def database(db_config):
+def sinapi_config():
+    """Fixture com configuração SINAPI mínima para testes."""
+    return {"state": "SP", "month": "01", "year": "2023", "type": "REFERENCIA"}
+
+
+@pytest.fixture
+def database(db_config, sinapi_config):
     """Fixture que cria uma instância do Database com engine mockada."""
     with patch("autosinapi.core.database.create_engine") as mock_create_engine:
         mock_engine = MagicMock()
         mock_create_engine.return_value = mock_engine
-        db = Database(db_config)
+        config = Config(db_config, sinapi_config, mode="server")
+        db = Database(config)
         db._engine = mock_engine
         yield db, mock_engine
 
@@ -47,22 +55,24 @@ def sample_df():
     )
 
 
-def test_connect_success(db_config):
+def test_connect_success(db_config, sinapi_config):
     """Testa conexão bem-sucedida com o banco."""
     with patch("autosinapi.core.database.create_engine") as mock_create_engine:
         mock_engine = MagicMock()
         mock_create_engine.return_value = mock_engine
-        db = Database(db_config)
+        config = Config(db_config, sinapi_config, mode="server")
+        db = Database(config)
         assert db._engine is not None
         mock_create_engine.assert_called_once()
 
 
-def test_connect_failure(db_config):
+def test_connect_failure(db_config, sinapi_config):
     """Testa falha na conexão com o banco."""
     with patch("autosinapi.core.database.create_engine") as mock_create_engine:
         mock_create_engine.side_effect = SQLAlchemyError("Connection failed")
         with pytest.raises(DatabaseError, match="Erro ao conectar"):
-            Database(db_config)
+            config = Config(db_config, sinapi_config, mode="server")
+            Database(config)
 
 
 def test_save_data_success(database, sample_df):

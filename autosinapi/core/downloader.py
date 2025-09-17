@@ -1,44 +1,68 @@
+# autosinapi/core/downloader.py
+
 """
-Módulo de Download do AutoSINAPI.
+downloader.py: Módulo de Obtenção de Dados do AutoSINAPI.
 
-Este módulo é responsável por obter os arquivos de dados do SINAPI. Ele abstrai
-a origem dos dados, que pode ser tanto um download direto do site da Caixa
-Econômica Federal quanto um arquivo local fornecido pelo usuário.
+Este módulo é responsável por abstrair a origem dos arquivos de dados do SINAPI.
+Ele fornece uma interface unificada para obter os dados, que podem vir de um
+download direto do site da Caixa Econômica Federal ou de um arquivo local
+fornecido pelo usuário.
 
-A classe `Downloader` gerencia a sessão HTTP, constrói as URLs de download
-com base nas configurações e trata os erros de rede, garantindo que o pipeline
-receba um stream de bytes do arquivo a ser processado.
+**Classe `Downloader`:**
+
+- **Inicialização:** Recebe um objeto `Config` que contém todos os parâmetros
+  necessários para a operação, como a URL base, templates de nome de arquivo,
+  tipos de planilha válidos e configurações de timeout.
+
+- **Entradas:**
+    - O método principal `get_sinapi_data` pode receber um `file_path`
+      opcional. Se fornecido, o módulo lê o arquivo local. Caso contrário,
+      ele constrói a URL de download com base nos parâmetros `YEAR`, `MONTH` e
+      `TYPE` presentes no objeto `Config`.
+
+- **Transformações/Processos:**
+    - **Construção de URL:** Monta a URL completa para o download do arquivo
+      `.zip` do SINAPI, utilizando o template e os parâmetros definidos no
+      `Config`.
+    - **Requisição HTTP:** Gerencia uma sessão `requests` para realizar o
+      download do arquivo, tratando exceções de rede (como timeouts ou erros de
+      HTTP) de forma robusta.
+    - **Leitura Local:** Valida se o arquivo local fornecido existe e se possui
+      uma extensão permitida (definida no `Config`).
+
+- **Saídas:**
+    - O método `get_sinapi_data` retorna um objeto `BinaryIO` (especificamente
+      `io.BytesIO`), que é um stream de bytes do conteúdo do arquivo (seja ele
+      baixado ou lido localmente). Este formato é ideal para ser
+      consumido pelos próximos estágios do pipeline (como o `unzip` no
+      `etl_pipeline.py`) sem a necessidade de salvar arquivos intermediários
+      em disco, embora também suporte salvar o arquivo baixado se configurado.
 """
 
+import logging
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO, Dict, Optional, Union
+from typing import BinaryIO, Optional, Union
 
 import requests
 
+from ..config import Config
 from ..exceptions import DownloadError
 
 
 class Downloader:
     """
     Classe responsável por obter os arquivos SINAPI, seja por download ou input direto.
-
-    Suporta dois modos de obtenção:
-    1. Download direto do servidor SINAPI
-    2. Leitura de arquivo local fornecido pelo usuário
     """
 
-    def __init__(self, sinapi_config: Dict[str, str], mode: str):
+    def __init__(self, config: Config):
         """
         Inicializa o downloader.
-
-        Args:
-            sinapi_config: Configurações do SINAPI
-            mode: Modo de operação ('server' ou 'local')
         """
-        self.config = sinapi_config
-        self.mode = mode
+        self.config = config
+        self.logger = logging.getLogger(__name__)
         self._session = requests.Session()
+        self.logger.info("Downloader inicializado.")
 
     def get_sinapi_data(
         self,
@@ -47,89 +71,77 @@ class Downloader:
     ) -> BinaryIO:
         """
         Obtém os dados do SINAPI, seja por download ou arquivo local.
-
-        Args:
-            file_path: Caminho opcional para arquivo XLSX local
-            save_path: Caminho opcional para salvar o arquivo baixado (modo local)
-
-        Returns:
-            BytesIO: Stream com o conteúdo do arquivo
-
-        Raises:
-            DownloadError: Se houver erro no download ou leitura do arquivo
         """
         if file_path:
+            self.logger.info("Modo de obtenção: Leitura de arquivo local.")
             return self._read_local_file(file_path)
+        
+        self.logger.info("Modo de obtenção: Download do servidor SINAPI.")
         return self._download_file(save_path)
 
     def _read_local_file(self, file_path: Union[str, Path]) -> BinaryIO:
         """Lê um arquivo XLSX local."""
+        self.logger.debug(f"Lendo arquivo local em: {file_path}")
         try:
             path = Path(file_path)
             if not path.exists():
                 raise FileNotFoundError(f"Arquivo não encontrado: {path}")
-            if path.suffix.lower() not in {".xlsx", ".xls"}:
-                raise ValueError("Formato inválido. Use arquivos .xlsx ou .xls")
-            return BytesIO(path.read_bytes())
+            # MODIFICADO: Usa constante do config para as extensões permitidas
+            if path.suffix.lower() not in self.config.ALLOWED_LOCAL_FILE_EXTENSIONS:
+                raise ValueError(f"Formato inválido. Use arquivos dos tipos: {self.config.ALLOWED_LOCAL_FILE_EXTENSIONS}")
+            
+            content = BytesIO(path.read_bytes())
+            self.logger.info(f"Arquivo local '{path.name}' lido com sucesso.")
+            return content
         except Exception as e:
+            self.logger.error(f"Erro ao ler o arquivo local '{file_path}': {e}", exc_info=True)
             raise DownloadError(f"Erro ao ler arquivo local: {str(e)}")
 
     def _download_file(self, save_path: Optional[Path] = None) -> BinaryIO:
         """
         Realiza o download do arquivo SINAPI.
-
-        Args:
-            save_path: Caminho para salvar o arquivo (apenas em modo local)
-
-        Returns:
-            BytesIO: Stream com o conteúdo do arquivo
-
-        Raises:
-            DownloadError: Se houver erro no download
         """
         try:
             url = self._build_url()
-            response = self._session.get(url, timeout=30)
+            self.logger.info(f"Realizando download de: {url}")
+            response = self._session.get(url, timeout=self.config.TIMEOUT)
             response.raise_for_status()
 
             content = BytesIO(response.content)
+            self.logger.info(f"Download de {url} concluído com sucesso ({len(content.getvalue())} bytes).")
 
-            if self.mode == "local" and save_path:
+            if self.config.is_local_mode and save_path:
+                self.logger.debug(f"Salvando arquivo baixado em: {save_path}")
                 save_path.write_bytes(response.content)
 
             return content
 
         except requests.RequestException as e:
+            self.logger.error(f"Falha no download de {url}: {e}", exc_info=True)
             raise DownloadError(f"Erro no download: {str(e)}")
 
     def _build_url(self) -> str:
         """
         Constrói a URL do arquivo SINAPI com base nas configurações.
-
-        Returns:
-            str: URL completa para download do arquivo
         """
-        base_url = "https://www.caixa.gov.br/Downloads/sinapi-a-vista-composicoes"
+        ano = str(self.config.YEAR).zfill(4)
+        mes = str(self.config.MONTH).zfill(2)
 
-        # Formata ano e mês com zeros à esquerda
-        ano = str(self.config["year"]).zfill(4)
-        mes = str(self.config["month"]).zfill(2)
-
-        # Determina o tipo de planilha
-        tipo = self.config.get("type", "REFERENCIA").upper()
-        if tipo not in ["REFERENCIA", "DESONERADO"]:
+        tipo = self.config.TYPE.upper()
+        if tipo not in self.config.VALID_TYPES:
             raise ValueError(f"Tipo de planilha inválido: {tipo}")
 
-        # Constrói a URL
-        file_name = f"SINAPI_{tipo}_{mes}_{ano}"
-        url = f"{base_url}/{file_name}.zip"
+        # MODIFICADO: Usa template do config para o nome do arquivo e extensão
+        file_name = self.config.DOWNLOAD_FILENAME_TEMPLATE.format(type=tipo, month=mes, year=ano)
+        url = f"{self.config.BASE_URL}/{file_name}{self.config.DOWNLOAD_FILE_EXTENSION}"
+        
+        self.logger.debug(f"URL construída: {url}")
 
         return url
 
     def __enter__(self):
-        """Permite uso do contexto 'with'."""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Fecha a sessão HTTP ao sair do contexto."""
+        self.logger.debug("Fechando sessão HTTP do Downloader.")
         self._session.close()

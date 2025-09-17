@@ -34,10 +34,10 @@ def test_valid_config(valid_db_config, valid_sinapi_config):
     assert config.sinapi_config == valid_sinapi_config
 
 
-def test_invalid_mode():
+def test_invalid_mode(valid_db_config, valid_sinapi_config):
     """Deve levantar erro para modo inválido."""
     with pytest.raises(ConfigurationError) as exc_info:
-        Config({}, {}, "invalid")
+        Config(valid_db_config, valid_sinapi_config, "invalid")
     assert "Modo inválido" in str(exc_info.value)
 
 

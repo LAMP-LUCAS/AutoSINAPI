@@ -1,7 +1,7 @@
 # Makefile para gerenciar o ambiente Docker do AutoSINAPI
 # Fornece atalhos para os comandos mais comuns do docker-compose.
 
-.PHONY: help build build-no-cache up run down app-down db-down adminer-down app-start db-start adminer-start clean clean-app clean-db clean-adminer shell logs logs-app logs-db logs-adminer
+.PHONY: help build build-no-cache up run run-local down app-down db-down adminer-down app-start db-start adminer-start clean clean-app clean-db clean-adminer shell logs logs-app logs-db logs-adminer
 
 # Garante que as variaveis do .env sejam carregadas
 include .env
@@ -14,7 +14,8 @@ help:
 	@echo "  make build          - (Re)constroi a imagem da aplicacao usando o cache."
 	@echo "  make build-no-cache - Forca a reconstrucao da imagem do zero (use apos adicionar dependencias)."
 	@echo "  make up             - Sobe todos os servicos (db, app, adminer) em background."
-	@echo "  make run            - Executa o pipeline de ETL dentro do container 'app' que ja esta rodando."
+	@echo "  make run            - Executa o pipeline de ETL (com download) dentro do container 'app'."
+	@echo "  make run-local      - Executa o pipeline de ETL (sem download) usando arquivos locais."
 	@echo "  make down           - Para e remove os conteineres."
 	@echo "  make app-down       - Para o container app"
 	@echo "  make db-down        - Para o container db"
@@ -52,10 +53,21 @@ up:
 	@echo "=> Iniciando todos os servicos em background..."
 	docker-compose up -d
 
-# Executa o pipeline dentro do container 'app' que ja esta rodando
+# =============================================================================
+#                             COMANDOS DE EXECUÇÃO
+# =============================================================================
+
+# Executa o pipeline com download
 run:
-	@echo "=> Executando o pipeline do AutoSINAPI via 'exec'..."
-	docker-compose exec app python tools/autosinapi_pipeline.py
+	@echo "=> Executando o pipeline do AutoSINAPI (com download) via 'exec'..."
+	docker-compose exec -e AUTOSINAPI_SKIP_DOWNLOAD=False app python -c "from autosinapi import run_etl; run_etl(mode='server', log_level='INFO')"
+
+# Executa o pipeline sem download, usando arquivos locais
+run-local:
+	@echo "=> Executando o pipeline em MODO LOCAL (sem download) via 'exec'..."
+	docker-compose exec -e AUTOSINAPI_SKIP_DOWNLOAD=True app python -c "from autosinapi import run_etl; run_etl(mode='server', log_level='INFO')"
+
+# =============================================================================
 
 # Para e remove os conteineres de todos os serviços
 down:
