@@ -319,13 +319,14 @@ class PipelineETL:
             missing_insumos_data = {
                 'codigo': missing_insumo_codes,
                 'descricao': [insumo_details_df.loc[code, 'descricao'] if code in insumo_details_df.index else self.config.PLACEHOLDER_INSUMO_DESC_TEMPLATE.format(code=code) for code in missing_insumo_codes],
-                'unidade': [insumo_details_df.loc[code, 'unidade'] if code in insumo_details_df.index else self.config.DEFAULT_PLACEHOLDER_UNIT for code in missing_insumo_codes]
+                'unidade': [insumo_details_df.loc[code, 'unidade'] if code in insumo_details_df.index else self.config.DEFAULT_PLACEHOLDER_UNIT for code in missing_insumo_codes],
+                'classificacao': 'NAO_CLASSIFICADO'
             }
             missing_insumos_df = pd.DataFrame(missing_insumos_data)
             processed_data['insumos'] = pd.concat([existing_insumos_df, missing_insumos_df], ignore_index=True)
 
         # Tratamento para composições ausentes
-        existing_composicoes_df = processed_data.get('composicoes', pd.DataFrame(columns=['codigo', 'descricao', 'unidade']))
+        existing_composicoes_df = processed_data.get('composicoes', pd.DataFrame(columns=['codigo', 'descricao', 'unidade', 'grupo']))
         parent_codes = structure_dfs['parent_composicoes_details'].set_index('codigo')
         child_codes = structure_dfs['child_item_details'][
             structure_dfs['child_item_details']['tipo'] == self.config.ITEM_TYPE_COMPOSICAO
@@ -340,12 +341,16 @@ class PipelineETL:
             def get_detail(code, column):
                 if code in parent_codes.index: return parent_codes.loc[code, column]
                 if code in child_codes.index: return child_codes.loc[code, column]
-                return self.config.PLACEHOLDER_COMPOSICAO_DESC_TEMPLATE.format(code=code) if column == 'descricao' else self.config.DEFAULT_PLACEHOLDER_UNIT
+                if column == 'descricao': return self.config.PLACEHOLDER_COMPOSICAO_DESC_TEMPLATE.format(code=code)
+                if column == 'unidade': return self.config.DEFAULT_PLACEHOLDER_UNIT
+                if column == 'grupo': return 'NAO_CLASSIFICADO'
+                return None
 
             missing_composicoes_df = pd.DataFrame({
                 'codigo': missing_composicao_codes,
                 'descricao': [get_detail(code, 'descricao') for code in missing_composicao_codes],
-                'unidade': [get_detail(code, 'unidade') for code in missing_composicao_codes]
+                'unidade': [get_detail(code, 'unidade') for code in missing_composicao_codes],
+                'grupo': [get_detail(code, 'grupo') for code in missing_composicao_codes]
             })
             processed_data['composicoes'] = pd.concat([existing_composicoes_df, missing_composicoes_df], ignore_index=True)
             
@@ -461,7 +466,7 @@ class PipelineETL:
                     self.logger.info("[FASE 0] Tabelas não encontradas. Criando esquema...")
                     db.create_tables()
                 else:
-                    self.logger.info("[FASE 0] Esquema já existente. Pulando criação."))
+                    self.logger.info("[FASE 0] Esquema já existente. Pulando criação.")
 
             # Fase 1: Aquisição de Dados
             extraction_path = self._execute_phase_1_acquisition(downloader)
@@ -474,6 +479,8 @@ class PipelineETL:
 
             manutencoes_file_path = next((f for f in all_excel_files if self.config.MAINTENANCE_FILE_KEYWORD in f.name), None)
             referencia_file_path = next((f for f in all_excel_files if self.config.REFERENCE_FILE_KEYWORD in f.name), None)
+            families_file_path = next((f for f in all_excel_files if self.config.FAMILIES_FILE_KEYWORD in f.name), None)
+            labor_file_path = next((f for f in all_excel_files if self.config.LABOR_FILE_KEYWORD in f.name), None)
 
             # Processa manutenções (se existirem)
             if manutencoes_file_path:
@@ -483,6 +490,30 @@ class PipelineETL:
                     tables_updated.append(table)
             else:
                 self.logger.warning("Arquivo de Manutenções não encontrado. Sincronização de status pulada.")
+
+            # Processa famílias e coeficientes (se existirem)
+            if families_file_path:
+                families_dfs = processor.process_familias_e_coeficientes(str(families_file_path))
+                for table_key, df in families_dfs.items():
+                    if not df.empty:
+                        table_name = getattr(self.config, f"DB_TABLE_{table_key.replace('_MENSAL', '').upper()}")
+                        if 'mensal' in table_key:
+                            df['data_referencia'] = pd.to_datetime(f"{self.config.YEAR}-{str(self.config.MONTH).zfill(2)}-01")
+                            db.save_data(df, table_name, policy=self.config.DB_POLICY_APPEND)
+                        else:
+                            db.save_data(df, table_name, policy=self.config.DB_POLICY_UPSERT, pk_columns=list(df.columns[:-1]))
+                        records_inserted += len(df)
+                        tables_updated.append(table_name)
+
+            # Processa mix de mão de obra (se existir)
+            if labor_file_path:
+                labor_df = processor.process_mao_de_obra(str(labor_file_path))
+                if not labor_df.empty:
+                    table_name = self.config.DB_TABLE_COMPOSICOES_MIX_MO
+                    labor_df['data_referencia'] = pd.to_datetime(f"{self.config.YEAR}-{str(self.config.MONTH).zfill(2)}-01")
+                    db.save_data(labor_df, table_name, policy=self.config.DB_POLICY_APPEND)
+                    records_inserted += len(labor_df)
+                    tables_updated.append(table_name)
 
             # Processa arquivo de referência (se existir)
             if not referencia_file_path:

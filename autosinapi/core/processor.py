@@ -335,10 +335,17 @@ class Processor:
 
             catalogo_df = pd.DataFrame()
             if "CODIGO" in df.columns and "DESCRICAO" in df.columns:
-                catalogo_df = df[["CODIGO", "DESCRICAO", "UNIDADE"]].copy()
+                cols_catalogo = ["CODIGO", "DESCRICAO", "UNIDADE"]
+                if "CLASSIFICACAO" in df.columns:
+                    cols_catalogo.append("CLASSIFICACAO")
+                catalogo_df = df[cols_catalogo].copy()
                 self.logger.debug(f"Extraídos {len(catalogo_df)} registros de catálogo da aba {sheet_name}.")
             
-            long_df = self._unpivot_data(df, ["CODIGO"], self.config.UNPIVOT_VALUE_PRECO)
+            id_vars = ["CODIGO"]
+            if "ORIGEM_DE_PRECO" in df.columns:
+                id_vars.append("ORIGEM_DE_PRECO")
+
+            long_df = self._unpivot_data(df, id_vars, self.config.UNPIVOT_VALUE_PRECO)
             self.logger.debug(f"Extraídos {len(long_df)} registros de preços da aba {sheet_name}.")
             return long_df, catalogo_df
         except Exception as e:
@@ -389,7 +396,10 @@ class Processor:
 
             catalogo_df = pd.DataFrame()
             if "CODIGO" in df.columns and "DESCRICAO" in df.columns:
-                catalogo_df = df[["CODIGO", "DESCRICAO", "UNIDADE"]].copy()
+                cols_catalogo = ["CODIGO", "DESCRICAO", "UNIDADE"]
+                if "GRUPO" in df.columns:
+                    cols_catalogo.append("GRUPO")
+                catalogo_df = df[cols_catalogo].copy()
 
             cost_cols = {
                 col.split("_")[0]: col
@@ -489,7 +499,7 @@ class Processor:
                         if process_type == "precos"
                         else ("custos_composicoes_mensal", "composicao_codigo")
                     )
-                    long_df.rename(columns={"CODIGO": code}, inplace=True)
+                    long_df.rename(columns={"CODIGO": code, "ORIGEM_DE_PRECO": "origem_preco"}, inplace=True)
                     all_dfs.setdefault(table, []).append(long_df)
                     self.logger.info(f"Dados da aba '{sheet_name}' adicionados à chave '{table}'.")
 
@@ -500,3 +510,51 @@ class Processor:
                 )
         
         return self._aggregate_final_dataframes(all_dfs, temp_insumos, temp_composicoes)
+
+    def process_familias_e_coeficientes(self, xlsx_path: str) -> Dict[str, pd.DataFrame]:
+        self.logger.info(f"Processando famílias e coeficientes: {xlsx_path}")
+        try:
+            df = pd.read_excel(xlsx_path, sheet_name=0, header=4)
+            df = self._normalize_cols(df)
+            
+            # 1. Extração de Famílias
+            familias_df = df[["CODIGO_DA_FAMILIA", "CODIGO_DO_INSUMO", "CATEGORIA"]].copy()
+            familias_df.rename(columns={
+                "CODIGO_DA_FAMILIA": "codigo_familia",
+                "CODIGO_DO_INSUMO": "insumo_codigo",
+                "CATEGORIA": "categoria"
+            }, inplace=True)
+            familias_df["insumo_codigo"] = pd.to_numeric(familias_df["insumo_codigo"], errors="coerce").astype("Int64")
+            familias_df.dropna(subset=["insumo_codigo"], inplace=True)
+
+            # 2. Extração de Coeficientes (Unpivot UFs)
+            coef_df = self._unpivot_data(df, ["CODIGO_DO_INSUMO"], "coeficiente")
+            coef_df.rename(columns={"CODIGO_DO_INSUMO": "insumo_codigo"}, inplace=True)
+            coef_df["insumo_codigo"] = pd.to_numeric(coef_df["insumo_codigo"], errors="coerce").astype("Int64")
+            coef_df.dropna(subset=["insumo_codigo"], inplace=True)
+
+            return {
+                "insumos_familias": familias_df,
+                "coeficientes_familia_mensal": coef_df
+            }
+        except Exception as e:
+            self.logger.error(f"Erro ao processar famílias e coeficientes: {e}", exc_info=True)
+            return {}
+
+    def process_mao_de_obra(self, xlsx_path: str) -> pd.DataFrame:
+        self.logger.info(f"Processando porcentagem de mão de obra: {xlsx_path}")
+        try:
+            # Lemos a aba 'SEM Desoneração' por padrão para SSOT base
+            df = pd.read_excel(xlsx_path, sheet_name=0, header=4)
+            df = self._normalize_cols(df)
+            
+            # Unpivot UFs para obter a porcentagem de MO
+            long_df = self._unpivot_data(df, ["CODIGO_DA_COMPOSICAO"], "porcentagem_mo")
+            long_df.rename(columns={"CODIGO_DA_COMPOSICAO": "composicao_codigo"}, inplace=True)
+            long_df["composicao_codigo"] = pd.to_numeric(long_df["composicao_codigo"], errors="coerce").astype("Int64")
+            long_df.dropna(subset=["composicao_codigo"], inplace=True)
+            
+            return long_df
+        except Exception as e:
+            self.logger.error(f"Erro ao processar mix de mão de obra: {e}", exc_info=True)
+            return pd.DataFrame()

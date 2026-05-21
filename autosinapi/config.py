@@ -28,6 +28,8 @@ class Config:
         # --- Constantes do ETL Pipeline ---
         "REFERENCE_FILE_KEYWORD": "Referência",
         "MAINTENANCE_FILE_KEYWORD": "Manuten",
+        "FAMILIES_FILE_KEYWORD": "familias",
+        "LABOR_FILE_KEYWORD": "mao_de_obra",
         "MAINTENANCE_DEACTIVATION_KEYWORD": "%DESATIVAÇÃO%",
 
         "TEMP_CSV_DIR": "csv_temp",
@@ -78,7 +80,8 @@ class Config:
         "UNPIVOT_VALUE_PRECO": "preco_mediano",
         "UNPIVOT_VALUE_CUSTO": "custo_total",
         "FINAL_CATALOG_COLUMNS": {
-            "CODIGO": "codigo", "DESCRICAO": "descricao", "UNIDADE": "unidade"
+            "CODIGO": "codigo", "DESCRICAO": "descricao", "UNIDADE": "unidade",
+            "CLASSIFICACAO": "classificacao", "GRUPO": "grupo"
         },
 
         # --- Constantes do Database ---
@@ -89,6 +92,9 @@ class Config:
         "DB_TABLE_COMPOSICAO_SUBCOMPOSICOES": "composicao_subcomposicoes",
         "DB_TABLE_PRECOS_INSUMOS": "precos_insumos_mensal",
         "DB_TABLE_CUSTOS_COMPOSICOES": "custos_composicoes_mensal",
+        "DB_TABLE_INSUMOS_FAMILIAS": "insumos_familias",
+        "DB_TABLE_COEFICIENTES_FAMILIA": "coeficientes_familia_mensal",
+        "DB_TABLE_COMPOSICOES_MIX_MO": "composicoes_mix_mao_de_obra",
         "ITEM_TYPE_INSUMO": "INSUMO",
         "ITEM_TYPE_COMPOSICAO": "COMPOSICAO",
         "DB_DIALECT": "postgresql",

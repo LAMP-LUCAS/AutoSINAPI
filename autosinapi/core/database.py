@@ -91,6 +91,9 @@ class Database:
         DROP TABLE IF EXISTS {self.config.DB_TABLE_MANUTENCOES} CASCADE;
         DROP TABLE IF EXISTS {self.config.DB_TABLE_COMPOSICOES} CASCADE;
         DROP TABLE IF EXISTS {self.config.DB_TABLE_INSUMOS} CASCADE;
+        DROP TABLE IF EXISTS {self.config.DB_TABLE_INSUMOS_FAMILIAS} CASCADE;
+        DROP TABLE IF EXISTS {self.config.DB_TABLE_COEFICIENTES_FAMILIA} CASCADE;
+        DROP TABLE IF EXISTS {self.config.DB_TABLE_COMPOSICOES_MIX_MO} CASCADE;
         """
 
         ddl = f"""
@@ -100,13 +103,28 @@ class Database:
         CREATE TABLE {self.config.DB_TABLE_COMPOSICOES} (
             codigo INTEGER PRIMARY KEY, descricao TEXT NOT NULL, unidade VARCHAR, grupo VARCHAR, status VARCHAR DEFAULT '{self.config.DB_DEFAULT_ITEM_STATUS}'
         );
+        CREATE TABLE {self.config.DB_TABLE_INSUMOS_FAMILIAS} (
+            codigo_familia INTEGER NOT NULL, insumo_codigo INTEGER NOT NULL, categoria VARCHAR(50),
+            PRIMARY KEY (codigo_familia, insumo_codigo),
+            FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
+        );
+        CREATE TABLE {self.config.DB_TABLE_COEFICIENTES_FAMILIA} (
+            insumo_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, coeficiente NUMERIC,
+            PRIMARY KEY (insumo_codigo, uf, data_referencia),
+            FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
+        );
+        CREATE TABLE {self.config.DB_TABLE_COMPOSICOES_MIX_MO} (
+            composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, porcentagem_mo NUMERIC,
+            PRIMARY KEY (composicao_codigo, uf, data_referencia),
+            FOREIGN KEY (composicao_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE
+        );
         CREATE TABLE {self.config.DB_TABLE_PRECOS_INSUMOS} (
-            insumo_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, preco_mediano NUMERIC,
+            insumo_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, preco_mediano NUMERIC, origem_preco VARCHAR(10),
             PRIMARY KEY (insumo_codigo, uf, data_referencia, regime),
             FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_CUSTOS_COMPOSICOES} (
-            composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, custo_total NUMERIC,
+            composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, custo_total NUMERIC, percentual_mo NUMERIC,
             PRIMARY KEY (composicao_codigo, uf, data_referencia, regime),
             FOREIGN KEY (composicao_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE
         );
