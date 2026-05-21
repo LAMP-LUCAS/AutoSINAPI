@@ -210,20 +210,34 @@ class PipelineETL:
         }
 
     def _find_and_normalize_zip(self, download_path: Path, standardized_name: str) -> Path:
-        self.logger.debug(f"Procurando por arquivo .zip em: {download_path}")
+        """
+        Localiza o arquivo ZIP de dados, buscando na subpasta ou na raiz de downloads.
+        Implementa Smart Discovery para identificar arquivos XLSX e ignorar PDFs.
+        """
+        self.logger.debug(f"Buscando arquivo ZIP em: {download_path}")
+        
+        # 1. Tentar busca exata na subpasta
         for file in download_path.glob('*.zip'):
-            self.logger.debug(f"Arquivo .zip encontrado: {file.name}")
-            if file.name.upper() != standardized_name.upper():
-                new_path = download_path / standardized_name
-                self.logger.info(
-                    f"Renomeando '{file.name}' para o padrão: '{standardized_name}'"
-                )
-                file.rename(new_path)
-                return new_path
-            return file
-        self.logger.info(
-            "Nenhum arquivo .zip correspondente encontrado localmente."
-            )
+            if 'xlsx' in file.name.lower():
+                return file
+
+        # 2. Smart Discovery: Buscar na raiz de downloads
+        import re
+        import shutil
+        base_dir = Path(self.config.DOWNLOAD_DIR)
+        year = str(self.config.YEAR)
+        month = str(self.config.MONTH).zfill(2)
+        pattern = re.compile(rf'SINAPI-{year}-{month}-formato-xlsx.*\.zip', re.IGNORECASE)
+
+        for file in base_dir.glob('*.zip'):
+            if pattern.search(file.name):
+                self.logger.info(f"[SMART DISCOVERY] Identificado arquivo {file.name} na raiz. Auto-organizando...")
+                download_path.mkdir(parents=True, exist_ok=True)
+                target_path = download_path / file.name
+                shutil.move(str(file), str(target_path))
+                return target_path
+
+        self.logger.info("Nenhum arquivo ZIP de dados encontrado localmente (incluindo Smart Discovery).")
         return None
 
     def _unzip_file(self, zip_path: Path) -> Path:
@@ -438,10 +452,16 @@ class PipelineETL:
             processor = Processor(self.config)
             db = Database(self.config)
 
-            # Fase 0: Preparação do Banco de Dados
-            self.logger.info("[FASE 0] Preparando banco de dados...")
-            db.create_tables()
-            self.logger.info("[FASE 0] Banco de dados preparado com sucesso.")
+            # Fase 0: Preparação do Banco de Dados (Inteligente)
+            self.logger.info("[FASE 0] Verificando existência de tabelas...")
+            with db._engine.connect() as conn:
+                from sqlalchemy import text
+                check = conn.execute(text("SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'insumos')")).scalar()
+                if not check:
+                    self.logger.info("[FASE 0] Tabelas não encontradas. Criando esquema...")
+                    db.create_tables()
+                else:
+                    self.logger.info("[FASE 0] Esquema já existente. Pulando criação."))
 
             # Fase 1: Aquisição de Dados
             extraction_path = self._execute_phase_1_acquisition(downloader)
