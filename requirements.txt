@@ -1,0 +1,8 @@
+numpy
+openpyxl
+pandas
+requests
+setuptools
+sqlalchemy
+tqdm
+typing
