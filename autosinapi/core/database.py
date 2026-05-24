@@ -108,7 +108,7 @@ class Database:
             FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_CUSTOS_COMPOSICOES} (
-            composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, custo_total NUMERIC,
+            composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, custo_total NUMERIC, percentual_mo NUMERIC,
             created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (composicao_codigo, uf, data_referencia, regime),
             FOREIGN KEY (composicao_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE

@@ -157,23 +157,55 @@ class PipelineETL:
             'type': os.getenv("SINAPI_TYPE", "REFERENCIA")
         }
 
+    def _find_and_normalize_zip(self, download_path: Path, standardized_name: str) -> Path:
+        """
+        Localiza o arquivo ZIP de dados, buscando na subpasta ou na raiz de downloads.
+        Implementa Smart Discovery para identificar arquivos XLSX e ignorar PDFs.
+        """
+        self.logger.debug(f"Buscando arquivo ZIP em: {download_path}")
+        
+        # 1. Tentar busca exata na subpasta
+        for file in download_path.glob('*.zip'):
+            if 'xlsx' in file.name.lower():
+                return file
+
+        # 2. Smart Discovery: Buscar na raiz de downloads
+        import re
+        import shutil
+        base_dir = Path(self.config.DOWNLOAD_DIR)
+        year = str(self.config.YEAR)
+        month = str(self.config.MONTH).zfill(2)
+        pattern = re.compile(rf'SINAPI-{year}-{month}-formato-xlsx.*\.zip', re.IGNORECASE)
+
+        for file in base_dir.glob('*.zip'):
+            if pattern.search(file.name):
+                self.logger.info(f"[SMART DISCOVERY] Identificado arquivo {file.name} na raiz. Auto-organizando...")
+                download_path.mkdir(parents=True, exist_ok=True)
+                target_path = download_path / file.name
+                shutil.move(str(file), str(target_path))
+                return target_path
+
+        self.logger.info("Nenhum arquivo ZIP de dados encontrado localmente (incluindo Smart Discovery).")
+        return None
+
     def run(self, input_file_path: str = None) -> Dict:
         self.logger.info("=" * 50)
         self.logger.info(f"Iniciando Processamento ETL - Versão {self.config.VERSION}")
         self.logger.info(f"Referência: {self.config.YEAR}/{self.config.MONTH:02d} - UF: {self.config.STATE}")
         self.logger.info("=" * 50)
 
-        status = self.config.STATUS_SUCCESS
-        message = "Pipeline executado com sucesso."
+        status = self.config.STATUS_FAILURE
+        message = "Pipeline iniciado."
         tables_updated = []
         records_inserted = 0
 
         try:
             with Database(self.config) as db:
+                # Fase 0: Preparação do Banco de Dados (Inteligente)
                 self.logger.info("[FASE 0] Verificando existência de tabelas...")
                 db.check_tables()
 
-                self.logger.info("[FASE 1] Extraindo arquivos...")
+                # Fase 1: Aquisição de Dados
                 downloader = Downloader(self.config)
                 referencia_file_path, extra_files = downloader.get_sinapi_data(input_file_path)
 
@@ -210,6 +242,9 @@ class PipelineETL:
                     records_inserted, tables_updated = self._execute_phase_3_load_data(
                         db, processed_data, structure_dfs, data_referencia
                     )
+                    
+                    status = self.config.STATUS_SUCCESS
+                    message = "Pipeline executado com sucesso."
 
         except AutoSinapiError as e:
             self.logger.error(f"Erro no pipeline: {e}")
@@ -306,7 +341,6 @@ class PipelineETL:
                 if code in child_codes.index and column in child_codes.columns:
                     val = child_codes.loc[code, column]
                     if pd.notna(val): return val
-                
                 if column == 'descricao': return self.config.PLACEHOLDER_COMPOSICAO_DESC_TEMPLATE.format(code=code)
                 if column == 'unidade': return self.config.DEFAULT_PLACEHOLDER_UNIT
                 if column == 'grupo': return 'NAO_CLASSIFICADO'
