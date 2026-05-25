@@ -28,6 +28,8 @@ class Config:
         # --- Constantes do ETL Pipeline ---
         "REFERENCE_FILE_KEYWORD": "Referência",
         "MAINTENANCE_FILE_KEYWORD": "Manuten",
+        "FAMILIES_FILE_KEYWORD": "familias",
+        "LABOR_FILE_KEYWORD": "mao_de_obra",
         "MAINTENANCE_DEACTIVATION_KEYWORD": "%DESATIVAÇÃO%",
 
         "TEMP_CSV_DIR": "csv_temp",
@@ -40,6 +42,7 @@ class Config:
         "STATUS_SUCCESS": "SUCESSO",
         "STATUS_SUCCESS_NO_DATA": "SUCESSO (SEM DADOS)",
         "STATUS_FAILURE": "FALHA",
+        "VERSION": "1.2.0",
 
         # --- Constantes do Pre-Processor ---
         "SHEETS_TO_CONVERT": ['CSD', 'CCD', 'CSE'],
@@ -67,6 +70,7 @@ class Config:
             "TIPO_ITEM": "TIPO_ITEM", "CODIGO_COMPOSICAO": "CODIGO_DA_COMPOSICAO",
             "CODIGO_ITEM": "CODIGO_DO_ITEM", "COEFICIENTE": "COEFICIENTE",
             "DESCRICAO_ITEM": "DESCRICAO", "UNIDADE_ITEM": "UNIDADE",
+            "GRUPO_COMPOSICAO": "GRUPO",
         },
 
         "HEADER_SEARCH_LIMIT": 20,
@@ -78,7 +82,8 @@ class Config:
         "UNPIVOT_VALUE_PRECO": "preco_mediano",
         "UNPIVOT_VALUE_CUSTO": "custo_total",
         "FINAL_CATALOG_COLUMNS": {
-            "CODIGO": "codigo", "DESCRICAO": "descricao", "UNIDADE": "unidade"
+            "CODIGO": "codigo", "DESCRICAO": "descricao", "UNIDADE": "unidade",
+            "CLASSIFICACAO": "classificacao", "GRUPO": "grupo"
         },
 
         # --- Constantes do Database ---
@@ -89,6 +94,10 @@ class Config:
         "DB_TABLE_COMPOSICAO_SUBCOMPOSICOES": "composicao_subcomposicoes",
         "DB_TABLE_PRECOS_INSUMOS": "precos_insumos_mensal",
         "DB_TABLE_CUSTOS_COMPOSICOES": "custos_composicoes_mensal",
+        "DB_TABLE_INSUMOS_FAMILIAS": "insumos_familias",
+        "DB_TABLE_COEFICIENTES_FAMILIA": "coeficientes_familia_mensal",
+        "DB_TABLE_COMPOSICOES_MIX_MO": "composicoes_mix_mao_de_obra",
+        "DB_TABLE_AUDIT_LOG": "sinapi_audit_log",
         "ITEM_TYPE_INSUMO": "INSUMO",
         "ITEM_TYPE_COMPOSICAO": "COMPOSICAO",
         "DB_DIALECT": "postgresql",
@@ -105,7 +114,7 @@ class Config:
     ):
         """
         Inicializa e valida todas as configurações do AutoSINAPI.
-
+        
         Args:
             db_config: Dicionário com as configurações do banco de dados.
             sinapi_config: Dicionário com os parâmetros da extração SINAPI.
@@ -117,10 +126,10 @@ class Config:
         self._validate_sinapi_config(sinapi_config)
         self.db_config = db_config
         self.sinapi_config = sinapi_config
-
+        
         # Valida e define o modo de operação
         self.mode = self._validate_mode(mode)
-
+        
         # --- Expõe as configurações como atributos de alto nível ---
         self.DOWNLOAD_DIR = "./downloads"
         self.YEAR = sinapi_config["year"]
@@ -132,19 +141,27 @@ class Config:
         self.DB_NAME = db_config["database"]
         self.DB_USER = db_config["user"]
         self.DB_PASSWORD = db_config["password"]
-
+        
         # --- Carrega as constantes (customizadas ou padrão) ---
         # Isso permite que o usuário personalize nomes de tabelas, arquivos, etc.
         constants = self.DEFAULT_CONSTANTS.copy()
         if custom_constants:
             constants.update(custom_constants)
         
+        # Sandbox mode: prefix table names
+        self._sandbox_prefix = ""
+        if self.mode == "sandbox":
+            self._sandbox_prefix = "sandbox_"
+        
         for key, value in constants.items():
+            # Add sandbox prefix to table names
+            if key.startswith("DB_TABLE_"):
+                value = f"{self._sandbox_prefix}{value}"
             setattr(self, key, value)
 
     def _validate_mode(self, mode: str) -> str:
-        if mode not in ("server", "local"):
-            raise ConfigurationError(f"Modo inválido: {mode}. Use 'server' ou 'local'")
+        if mode not in ("server", "local", "sandbox"):
+            raise ConfigurationError(f"Modo inválido: {mode}. Use 'server', 'local' ou 'sandbox'")
         return mode
 
     def _validate_db_config(self, config: Dict[str, Any]) -> Dict[str, Any]:

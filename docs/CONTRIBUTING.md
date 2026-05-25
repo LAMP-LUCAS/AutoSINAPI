@@ -196,10 +196,8 @@ Para otimizar o fluxo de trabalho e garantir a padronização, utilizamos as seg
 
 As nomenclaturas devem ser claras e descritivas, refletindo a funcionalidade e o propósito do código.
 
-### 6.1 Python (FastAPI)
+## 7. Integração com o Ecossistema
 
-- **Módulos e Classes**: `PascalCase` (ex: `SinapiParser`, `DatabaseManager`).
-- **Variáveis e Funções**: `snake_case` (ex: `file_data`, `process_spreadsheet`).
-- **Constantes**: `UPPER_SNAKE_CASE` (ex: `API_VERSION`, `DB_CONNECTION_STRING`).
-- **Arquivos**: `snake_case` (ex: `sinapi_parser.py`, `main.py`).
-- **Pacotes**: O código deve ser organizado em pacotes e módulos lógicos (ex: `app.services`, `app.models`, `app.routers`).
+Este repositório é o **Core/Toolkit** do projeto. Ele é consumido pelo repositório [autoSINAPI_API](https://github.com/LAMP-LUCAS/autoSINAPI_API) como um submódulo Git. 
+
+As mudanças de lógica de negócio do SINAPI (filtros, calculos de BI, ETL) devem nascer aqui, enquanto a lógica de entrega (FastAPI, Gateway, Chaves de API) vive no repositório da API.
