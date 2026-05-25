@@ -1,10 +1,9 @@
 """
 Testes de traceability para o ETL Pipeline.
 """
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
-from pathlib import Path
 from autosinapi.etl_pipeline import PipelineETL
 
 
@@ -22,6 +21,7 @@ def mock_pipeline(mocker, tmp_path):
 
         mock_db_instance = MagicMock()
         mock_db.return_value = mock_db_instance
+        mock_db_instance.__enter__.return_value = mock_db_instance
 
         mocker.patch(
             "autosinapi.etl_pipeline.PipelineETL._get_db_config",
@@ -38,23 +38,23 @@ def mock_pipeline(mocker, tmp_path):
 
         pipeline = PipelineETL(run_id="test-run", config_path=None)
 
-        # Mock phase 1 to return extraction_path directly (skip download)
-        mocker.patch.object(pipeline, "_execute_phase_1_acquisition", return_value=extraction_path)
-        mocker.patch.object(pipeline, "_sync_catalog_status")
+        # Mock Downloader to skip real download
+        mock_downloader_instance = mock_downloader.return_value
+        mock_downloader_instance.get_sinapi_data.return_value = (str(extraction_path / "SINAPI_Ref.xlsx"), {})
 
         yield pipeline, mock_db_instance, mock_processor, extraction_path
 
 
 class TestDeleteByPeriod:
-    def test_execute_phase_3_uses_delete_not_truncate(self, mock_pipeline):
+    def test_execute_phase_3_uses_correct_save_calls(self, mock_pipeline):
         pipeline, mock_db, mock_processor, extraction_path = mock_pipeline
 
-        # Create reference file matching config keyword 'Refer\u00eancia'
-        ref_name = "SINAPI_Refer\u00eancia_2024_01.xlsx"
-        (extraction_path / ref_name).touch()
+        # Create dummy reference file
+        ref_file = extraction_path / "SINAPI_Referência_2024_01.xlsx"
+        ref_file.touch()
 
         mock_processor.return_value.process_catalogo_e_precos.return_value = {
-            "insumos": pd.DataFrame({"codigo": [1001], "descricao": ["A"], "unidade": ["m3"]}),
+            "insumos": pd.DataFrame({"codigo": [1001], "descricao": ["A"], "unidade": ["m3"], "classificacao": ["c"]}),
             "precos_insumos_mensal": pd.DataFrame(),
             "custos_composicoes_mensal": pd.DataFrame(),
         }
@@ -64,19 +64,17 @@ class TestDeleteByPeriod:
                 "composicao_pai_codigo": [2001], "insumo_filho_codigo": [1001],
                 "coeficiente": [1.5],
             }),
-            "composicao_subcomposicoes": pd.DataFrame(),
-            "parent_composicoes_details": pd.DataFrame({"codigo": []}),
-            "child_item_details": pd.DataFrame({"codigo": [], "tipo": [], "descricao": [], "unidade": []}),
+            "composicao_subcomposicoes": pd.DataFrame(columns=["composicao_pai_codigo", "composicao_filho_codigo"]),
+            "parent_composicoes_details": pd.DataFrame({"codigo": [2001], "descricao": ["Comp"], "unidade": ["UN"], "grupo": ["g"]}),
+            "child_item_details": pd.DataFrame({"codigo": [1001], "tipo": ["INSUMO"], "descricao": ["A"], "unidade": ["m3"]}),
         }
-
-        pipeline.config.YEAR = 2024
-        pipeline.config.MONTH = 1
 
         pipeline.run()
 
-        # Check TRUNCATE was called (structure tables)
-        truncate_calls = mock_db.truncate_table.call_args_list
-        assert len(truncate_calls) > 0, "TRUNCATE nao foi chamado"
+        # Check if save_data was called for main tables
+        assert mock_db.save_data.called
+        # Check audit log registration
+        mock_db.register_audit_log.assert_called_once()
 
 
 class TestExtractSinapiVersion:

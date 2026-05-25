@@ -22,7 +22,8 @@ def mock_pipeline(mocker, tmp_path):
 
         mock_db_instance = MagicMock()
         mock_db.return_value = mock_db_instance
-        mock_db.__enter__.return_value = mock_db_instance
+        # Correctly mock context manager
+        mock_db_instance.__enter__.return_value = mock_db_instance
 
         mocker.patch("autosinapi.etl_pipeline.PipelineETL._get_db_config",
                       return_value={"host": "localhost", "port": 5432, "database": "test_db",
@@ -60,20 +61,20 @@ class TestRunETL:
         mock_downloader.return_value.get_sinapi_data.return_value = (str(ref_file), {})
 
         mock_processor.return_value.process_catalogo_e_precos.return_value = {
-            "insumos": pd.DataFrame({"codigo": [1], "descricao": ["a"], "unidade": ["un"]}),
-            "composicoes": pd.DataFrame({"codigo": [2], "descricao": ["b"], "unidade": ["un"]}),
+            "insumos": pd.DataFrame({"codigo": [1], "descricao": ["a"], "unidade": ["un"], "classificacao": ["c"]}),
+            "composicoes": pd.DataFrame({"codigo": [2], "descricao": ["b"], "unidade": ["un"], "grupo": ["g"]}),
         }
         mock_processor.return_value.process_composicao_itens.return_value = {
             "composicao_insumos": pd.DataFrame({"composicao_pai_codigo": [2], "insumo_filho_codigo": [1]}),
-            "composicao_subcomposicoes": pd.DataFrame(),
-            "parent_composicoes_details": pd.DataFrame({"codigo": [2], "descricao": ["b"], "unidade": ["un"]}),
+            "composicao_subcomposicoes": pd.DataFrame(columns=["composicao_pai_codigo", "composicao_filho_codigo"]),
+            "parent_composicoes_details": pd.DataFrame({"codigo": [2], "descricao": ["b"], "unidade": ["un"], "grupo": ["g"]}),
             "child_item_details": pd.DataFrame({"codigo": [1], "tipo": ["INSUMO"], "descricao": ["a"], "unidade": ["un"]}),
         }
 
         result = pipeline.run()
         
         assert result["status"] == pipeline.config.STATUS_SUCCESS
-        assert mock_db.save_data.call_count > 0
+        assert mock_db.save_data.called
         mock_db.register_audit_log.assert_called_once()
 
     def test_run_etl_processing_error(self, mock_pipeline):

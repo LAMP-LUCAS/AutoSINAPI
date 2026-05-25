@@ -191,7 +191,7 @@ class PipelineETL:
     def run(self, input_file_path: str = None) -> Dict:
         self.logger.info("=" * 50)
         self.logger.info(f"Iniciando Processamento ETL - Versão {self.config.VERSION}")
-        self.logger.info(f"Referência: {self.config.YEAR}/{self.config.MONTH:02d} - UF: {self.config.STATE}")
+        self.logger.info(f"Referência: {self.config.YEAR}/{int(self.config.MONTH):02d} - UF: {self.config.STATE}")
         self.logger.info("=" * 50)
 
         status = self.config.STATUS_FAILURE
@@ -286,7 +286,7 @@ class PipelineETL:
         match = re.search(r'(\d{4})[_-](\d{2})', fname)
         if match:
             return f"{match.group(1)}.{match.group(2)}"
-        return f"{self.config.YEAR}.{self.config.MONTH:02d}"
+        return f"{self.config.YEAR}.{int(self.config.MONTH):02d}"
 
     def _handle_missing_items_placeholders(self, processed_data: Dict, structure_dfs: Dict) -> Dict:
         """
