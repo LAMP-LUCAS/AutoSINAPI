@@ -38,10 +38,11 @@ planilhas Excel complexas.
       serão consumidos posteriormente pela classe `Processor`.
 """
 
-import pandas as pd
-import os
 import logging
 from pathlib import Path
+from typing import List
+
+import pandas as pd
 
 from autosinapi.config import Config
 from autosinapi.exceptions import ProcessingError
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 def convert_excel_sheets_to_csv(
     xlsx_full_path: Path,
-    sheets_to_convert: list[str],
+    sheets_to_convert: List[str],
     output_dir: Path,
     config: Config
 ):
