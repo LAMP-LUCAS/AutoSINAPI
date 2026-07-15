@@ -356,7 +356,7 @@ class Processor:
     def _process_custos_sheet(
         self, xlsx_path: str, process_key: str
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        csv_dir = Path(xlsx_path).parent.parent / self.config.TEMP_CSV_DIR
+        csv_dir = Path(xlsx_path).parent / self.config.TEMP_CSV_DIR
         csv_path = csv_dir / f"{process_key}.csv"
         self.logger.info(f"Lendo dados de custo do arquivo CSV pré-processado: {csv_path}")
         if not csv_path.exists():
@@ -530,7 +530,7 @@ class Processor:
     def process_familias_e_coeficientes(self, xlsx_path: str) -> Dict[str, pd.DataFrame]:
         self.logger.info(f"Processando famílias e coeficientes: {xlsx_path}")
         try:
-            df = pd.read_excel(xlsx_path, sheet_name=0, header=4)
+            df = pd.read_excel(xlsx_path, sheet_name=0, header=5)
             df = self._normalize_cols(df)
             
             # 1. Extração de Famílias
@@ -561,7 +561,7 @@ class Processor:
         self.logger.info(f"Processando porcentagem de mão de obra: {xlsx_path}")
         try:
             # Lemos a aba 'SEM Desoneração' por padrão para SSOT base
-            df = pd.read_excel(xlsx_path, sheet_name=0, header=4)
+            df = pd.read_excel(xlsx_path, sheet_name=0, header=5)
             df = self._normalize_cols(df)
             
             # Unpivot UFs para obter a porcentagem de MO

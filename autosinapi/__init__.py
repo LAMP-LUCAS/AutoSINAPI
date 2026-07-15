@@ -151,7 +151,12 @@ def run_etl(db_config: Dict[str, Any] = None, sinapi_config: Dict[str, Any] = No
         'AUTOSINAPI_MONTH': sinapi_config.get('month'),
         'AUTOSINAPI_TYPE': sinapi_config.get('type', 'REFERENCIA'),
         'AUTOSINAPI_POLICY': sinapi_config.get('duplicate_policy', 'substituir'),
-        'AUTOSINAPI_MODE': mode # Pass the mode
+        'AUTOSINAPI_MODE': mode, # Pass the mode
+        # PipelineETL._get_sinapi_config() reads SINAPI_* vars
+        'SINAPI_YEAR': sinapi_config.get('year'),
+        'SINAPI_MONTH': sinapi_config.get('month'),
+        'SINAPI_STATE': sinapi_config.get('state', 'SP'),
+        'SINAPI_TYPE': sinapi_config.get('type', 'REFERENCIA'),
     }
 
     # Filter out None values

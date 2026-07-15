@@ -104,3 +104,78 @@ class TestAuditLog:
         assert mock_conn.execute.called
         call_str = str(mock_conn.execute.call_args[0][0])
         assert "sinapi_audit_log" in call_str
+
+    def test_register_audit_log_uses_etl_run_log_schema(self, database):
+        """
+        Issue 3: Verifica que o INSERT usa o schema ETL-run-log
+        (run_id, data_referencia, records_inserted, tables_updated)
+        e NÃO o schema audit-trail (id, table_name, record_pk, operation).
+        """
+        db, mock_engine = database
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+        db.register_audit_log(
+            run_id="run-abc-123", data_ref="2026.05",
+            records=362891, tables=["insumos", "precos_insumos_mensal"]
+        )
+
+        assert mock_conn.execute.called
+        call_str = str(mock_conn.execute.call_args[0][0])
+
+        # Colunas DO ETL-run-log schema (devem estar presentes)
+        assert "run_id" in call_str, "ETL-run-log schema requer coluna 'run_id'"
+        assert "data_referencia" in call_str, "ETL-run-log schema requer 'data_referencia'"
+        assert "records_inserted" in call_str, "ETL-run-log schema requer 'records_inserted'"
+        assert "tables_updated" in call_str, "ETL-run-log schema requer 'tables_updated'"
+
+        # Colunas do audit-trail schema (NÃO devem estar presentes)
+        assert "record_pk" not in call_str, "Schema incorreto: não deve ter 'record_pk' (é audit-trail)"
+        assert "old_values" not in call_str, "Schema incorreto: não deve ter 'old_values' (é audit-trail)"
+        assert "new_values" not in call_str, "Schema incorreto: não deve ter 'new_values' (é audit-trail)"
+        assert "table_name" not in call_str, "Schema incorreto: não deve ter 'table_name' (é audit-trail)"
+        assert "motivo_manutencao" not in call_str, "Schema incorreto: não deve ter 'motivo_manutencao'"
+        assert "operation" not in call_str, "Schema incorreto: não deve ter 'operation' (é audit-trail)"
+
+    @patch("pandas.DataFrame.to_sql")
+    def test_upsert_precos_is_idempotent(self, mock_to_sql, database):
+        """
+        Issue UPSERT: Verifica que save_data com policy UPSERT em
+        precos_insumos_mensal não levanta PK violation na segunda execução.
+        """
+        import pandas as pd
+        db, mock_engine = database
+        mock_conn = MagicMock()
+        mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+        # Simula execução do UPSERT (o mock do to_sql + conn.execute)
+        mock_conn.execute.return_value = None
+
+        df = pd.DataFrame({
+            "insumo_codigo": [1, 2],
+            "uf": ["SP", "SP"],
+            "data_referencia": pd.Timestamp("2026-05-01"),
+            "regime": ["NAO_DESONERADO", "NAO_DESONERADO"],
+            "preco_mediano": [100.0, 200.0],
+        })
+
+        # Primeira execução (UPSERT - deve inserir)
+        db.save_data(df.copy(), "precos_insumos_mensal", policy="upsert",
+                     pk_columns=["insumo_codigo", "uf", "data_referencia", "regime"],
+                     sinapi_versao="2026.05", etl_run_id="run-001")
+        assert mock_to_sql.called
+
+        # Segunda execução com os mesmos dados (UPSERT - deve atualizar, sem erro)
+        mock_to_sql.reset_mock()
+        try:
+            db.save_data(df.copy(), "precos_insumos_mensal", policy="upsert",
+                         pk_columns=["insumo_codigo", "uf", "data_referencia", "regime"],
+                         sinapi_versao="2026.05", etl_run_id="run-002")
+            idempotent = True
+        except Exception:
+            idempotent = False
+
+        assert idempotent, (
+            "UPSERT não é idempotente! Segunda execução com mesmos PKs "
+            "não deveria levantar exceção."
+        )
