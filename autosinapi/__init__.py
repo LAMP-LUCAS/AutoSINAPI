@@ -9,7 +9,7 @@ O `__all__` define explicitamente quais nomes são exportados quando um cliente
 usa `from autosinapi import *`.
 """
 
-__version__ = "0.1.0"  # A ser gerenciado pelo setuptools-scm
+__version__ = "0.5.0b0"  # Gerenciado pelo setuptools-scm (tag v0.5.0-beta.0)
 
 from autosinapi.config import Config
 from autosinapi.core.database import Database
