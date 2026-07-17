@@ -166,6 +166,17 @@ class Database:
         
         if sinapi_versao:
             data.loc[:, "sinapi_versao"] = sinapi_versao
+            # Popula data_referencia se ausente (apenas tabelas com essa coluna)
+            _tables_with_data_ref = {"precos_insumos_mensal", "custos_composicoes_mensal",
+                                     "manutencoes_historico", "coeficientes_familia_mensal",
+                                     "composicoes_mix_mao_de_obra"}
+            if table_name in _tables_with_data_ref and "data_referencia" not in data.columns:
+                try:
+                    parts = str(sinapi_versao).split(".")
+                    ref_date = pd.Timestamp(f"{parts[0]}-{int(parts[1]):02d}-01")
+                    data.loc[:, "data_referencia"] = ref_date
+                except (IndexError, ValueError):
+                    pass
         if etl_run_id:
             try:
                 run_uuid = uuid.UUID(str(etl_run_id))
@@ -185,6 +196,16 @@ class Database:
             pk_columns = kwargs.get("pk_columns")
             if not pk_columns:
                 raise DatabaseError("Política 'upsert' requer 'pk_columns'.")
+            # Deduplica para evitar CardinalityViolation no ON CONFLICT
+            if pk_columns and not data.empty:
+                before = len(data)
+                data = data.drop_duplicates(subset=pk_columns, keep="last")
+                after = len(data)
+                if before != after:
+                    self.logger.warning(
+                        f"Dados duplicados removidos em '{table_name}': "
+                        f"{before - after} de {before} registros removidos."
+                    )
             self._upsert_data(data, table_name, pk_columns)
 
     def _append_data(self, data: pd.DataFrame, table_name: str, **kwargs):

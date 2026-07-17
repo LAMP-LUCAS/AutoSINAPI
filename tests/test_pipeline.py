@@ -38,6 +38,74 @@ def mock_pipeline(mocker, tmp_path):
         yield pipeline, mock_db_instance, mock_processor, mock_downloader, mock_convert, extraction_path
 
 
+class TestSmartDiscoveryManutencoes:
+    """Issue 4a: Smart Discovery deve encontrar arquivos Manutenções com acentos."""
+
+    def test_discover_manutencoes_file_with_accents(self, mock_pipeline):
+        """
+        Verifica que _discover_local_files encontra arquivo
+        SINAPI_Manutenções_2026_05.xlsx (acentos + plural).
+        O SD espera o path: {DOWNLOAD_DIR}/{year}_{month}/SINAPI-{year}-{month}-formato-xlsx/
+        """
+        pipeline, _, _, _, _, extraction_path = mock_pipeline
+
+        # Cria estrutura exata que o SD espera
+        xlsx_dir = extraction_path / "2025_08" / "SINAPI-2025-08-formato-xlsx"
+        xlsx_dir.mkdir(parents=True, exist_ok=True)
+
+        # Arquivo real com nome acentuado e plural: Manutenções
+        manut_file = xlsx_dir / "SINAPI_Manutenções_2025_08.xlsx"
+        manut_file.touch()
+
+        # Arquivo referência (obrigatório para SD completar)
+        ref_file = xlsx_dir / "SINAPI_Referência_2025_08.xlsx"
+        ref_file.touch()
+
+        pipeline.config.DOWNLOAD_DIR = str(extraction_path)
+        pipeline.config.YEAR = 2025
+        pipeline.config.MONTH = 8
+
+        referencia, extra = pipeline._discover_local_files()
+
+        assert referencia is not None, "Referência não encontrada!"
+        assert extra["manutencoes"] is not None, (
+            "BUG: Smart Discovery não encontrou SINAPI_Manutenções.xlsx com acentos!\n"
+            "Verificar keywords em etl_pipeline.py:229 — 'manutenção' e 'manutencao'\n"
+            "não casam com 'manutenções' (plural acentuado)."
+        )
+        assert "manutenções" in str(extra["manutencoes"]).lower(), (
+            f"Arquivo errado: {extra['manutencoes']}"
+        )
+
+    def test_discover_manutencoes_file_without_accents(self, mock_pipeline):
+        """
+        Verifica que _discover_local_files também encontra arquivo
+        MANUTENCOES (sem acento, maiúsculo).
+        """
+        pipeline, _, _, _, _, extraction_path = mock_pipeline
+
+        xlsx_dir = extraction_path / "2025_08" / "SINAPI-2025-08-formato-xlsx"
+        xlsx_dir.mkdir(parents=True, exist_ok=True)
+
+        # Arquivo com variante: MANUTENCOES (sem acento)
+        manut_file = xlsx_dir / "SINAPI_MANUTENCOES_2025_08.xlsx"
+        manut_file.touch()
+
+        ref_file = xlsx_dir / "SINAPI_Referencia_2025_08.xlsx"
+        ref_file.touch()
+
+        pipeline.config.DOWNLOAD_DIR = str(extraction_path)
+        pipeline.config.YEAR = 2025
+        pipeline.config.MONTH = 8
+
+        _, extra = pipeline._discover_local_files()
+
+        assert extra["manutencoes"] is not None, (
+            "BUG: SD não encontrou MANUTENCOES sem acento!\n"
+            "Verificar se 'manutencoes' está nas keywords."
+        )
+
+
 class TestSinapiVersionExtraction:
     def test_extract_version_from_reference_file(self, mock_pipeline):
         pipeline, _, _, _, _, _ = mock_pipeline

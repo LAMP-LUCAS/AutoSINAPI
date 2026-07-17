@@ -188,6 +188,68 @@ class PipelineETL:
         self.logger.info("Nenhum arquivo ZIP de dados encontrado localmente (incluindo Smart Discovery).")
         return None
 
+    def _discover_local_files(self) -> Tuple[Optional[Path], Dict[str, Optional[Path]]]:
+        """
+        Busca arquivos locais via Smart Discovery.
+        Retorna (caminho_xlsx_referencia, dict_com_arquivos_extras).
+        """
+        import traceback as tb_mod
+        downloads_dir = Path(self.config.DOWNLOAD_DIR)
+        year = str(self.config.YEAR)
+        month = str(self.config.MONTH).zfill(2)
+        subfolder_name = f"SINAPI-{year}-{month}-formato-xlsx"
+        extraction_path = downloads_dir / f"{year}_{month}" / subfolder_name
+        download_path = downloads_dir / f"{year}_{month}"
+        self.logger.info(f"[SMART DISCOVERY] Buscando em: {extraction_path}")
+        self.logger.info(f"[SMART DISCOVERY] DOWNLOAD_DIR={self.config.DOWNLOAD_DIR} YEAR={self.config.YEAR} MONTH={self.config.MONTH}")
+
+        # 1. Verifica se os xlsx já estão extraídos
+        try:
+            exists_check = extraction_path.exists()
+        except Exception as e:
+            self.logger.error(f"[SMART DISCOVERY] extraction_path.exists() falhou: type={type(extraction_path)} val={extraction_path} err={e}")
+            exists_check = False
+        self.logger.info(f"[SMART DISCOVERY] extraction_path.exists()={exists_check}")
+
+        try:
+            is_dir_check = extraction_path.is_dir() if exists_check else False
+        except Exception as e:
+            self.logger.error(f"[SMART DISCOVERY] extraction_path.is_dir() falhou: type={type(extraction_path)} val={extraction_path} err={e}")
+            is_dir_check = False
+
+        if exists_check and is_dir_check:
+            self.logger.info(f"[SMART DISCOVERY] Diretório de extração encontrado: {extraction_path}")
+            referencia = None
+            extra = {"manutencoes": None, "familias": None, "mao_de_obra": None}
+            for f in extraction_path.iterdir():
+                if f.suffix.lower() in ('.xlsx', '.xls'):
+                    name_lower = f.name.lower()
+                    if 'referência' in name_lower or 'referencia' in name_lower:
+                        referencia = f
+                    elif any(kw in name_lower for kw in ['manutenção', 'manutencao', 'manutenções', 'manutencoes']):
+                        extra["manutencoes"] = f
+                    elif 'família' in name_lower or 'familia' in name_lower:
+                        extra["familias"] = f
+                    elif 'mão_de_obra' in name_lower or 'mao_de_obra' in name_lower:
+                        extra["mao_de_obra"] = f
+            if referencia:
+                self.logger.info(f"[SMART DISCOVERY] Referência encontrada: {referencia.name}")
+                return referencia, extra
+
+        # 2. Procura ZIP local (extrai se necessário)
+        zip_path = self._find_and_normalize_zip(download_path, subfolder_name)
+        if zip_path and zip_path.exists():
+            self.logger.info(f"[SMART DISCOVERY] ZIP encontrado: {zip_path}. Extraindo...")
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(extraction_path)
+            self.logger.info(f"[SMART DISCOVERY] Extraído para: {extraction_path}")
+            # Tenta novamente a busca dos xlsx extraídos
+            return self._discover_local_files()
+
+        # 3. Nada encontrado localmente
+        self.logger.info("[SMART DISCOVERY] Nenhum arquivo local encontrado.")
+        return None, {}
+
     def run(self, input_file_path: str = None) -> Dict:
         self.logger.info("=" * 50)
         self.logger.info(f"Iniciando Processamento ETL - Versão {self.config.VERSION}")
@@ -205,35 +267,68 @@ class PipelineETL:
                 self.logger.info("[FASE 0] Verificando existência de tabelas...")
                 db.check_tables()
 
-                # Fase 1: Aquisição de Dados
-                downloader = Downloader(self.config)
-                referencia_file_path, extra_files = downloader.get_sinapi_data(input_file_path)
+                # Fase 1: Aquisição de Dados (local first, fallback download)
+                referencia_file_path = None
+                extra_files = {}
+
+                if input_file_path:
+                    # Caminho explícito fornecido
+                    referencia_file_path = Path(input_file_path)
+                    self.logger.info(f"Usando arquivo fornecido: {referencia_file_path}")
+                else:
+                    # Smart Discovery: busca local primeiro
+                    ref_path, extra = self._discover_local_files()
+                    if ref_path:
+                        referencia_file_path = ref_path
+                        extra_files = extra
+                    else:
+                        # Fallback: tenta download da Caixa
+                        self.logger.info("Nenhum arquivo local encontrado. Tentando download da Caixa...")
+                        downloader = Downloader(self.config)
+                        try:
+                            downloaded = downloader.get_sinapi_data()
+                            if downloaded:
+                                zip_path = downloader._build_url()
+                                self.logger.info(f"Download concluído. Processando...")
+                                # Salva e extrai
+                                year = str(self.config.YEAR)
+                                month = str(self.config.MONTH).zfill(2)
+                                download_dir = Path(self.config.DOWNLOAD_DIR) / f"{year}_{month}"
+                                download_dir.mkdir(parents=True, exist_ok=True)
+                                zip_dest = download_dir / f"SINAPI-{year}-{month}-formato-xlsx.zip"
+                                zip_dest.write_bytes(downloaded.getvalue())
+                                ref_path, extra = self._discover_local_files()
+                                if ref_path:
+                                    referencia_file_path = ref_path
+                                    extra_files = extra
+                        except Exception as e:
+                            self.logger.error(f"Download falhou: {e}")
 
                 if not referencia_file_path:
                     status = self.config.STATUS_SUCCESS_NO_DATA
                     message = "Pipeline finalizado sem dados para processar."
                 else:
-                    extraction_path = Path(referencia_file_path).parent
+                    extraction_path = referencia_file_path.parent
                     self._run_pre_processing(referencia_file_path, extraction_path)
                     
-                    data_referencia = self.extract_sinapi_version(referencia_file_path)
+                    data_referencia = self.extract_sinapi_version(str(referencia_file_path))
                     self.logger.info(f"Versão SINAPI extraída do arquivo: {data_referencia}")
 
                     self.logger.info("[FASE 2] Transformando dados...")
                     processor = Processor(self.config)
-                    processed_data = processor.process_catalogo_e_precos(referencia_file_path)
-                    structure_dfs = processor.process_composicao_itens(referencia_file_path)
+                    processed_data = processor.process_catalogo_e_precos(str(referencia_file_path))
+                    structure_dfs = processor.process_composicao_itens(str(referencia_file_path))
                     
                     if extra_files.get("manutencoes"):
-                        manut_df = processor.process_manutencoes(extra_files["manutencoes"])
+                        manut_df = processor.process_manutencoes(str(extra_files["manutencoes"]))
                         processed_data["manutencoes_historico"] = manut_df
                     
                     if extra_files.get("familias"):
-                        fam_data = processor.process_familias_e_coeficientes(extra_files["familias"])
+                        fam_data = processor.process_familias_e_coeficientes(str(extra_files["familias"]))
                         processed_data.update(fam_data)
 
                     if extra_files.get("mao_de_obra"):
-                        mo_df = processor.process_mao_de_obra(extra_files["mao_de_obra"])
+                        mo_df = processor.process_mao_de_obra(str(extra_files["mao_de_obra"]))
                         processed_data["composicoes_mix_mao_de_obra"] = mo_df
 
                     processed_data = self._handle_missing_items_placeholders(processed_data, structure_dfs)
@@ -366,14 +461,14 @@ class PipelineETL:
         load_order = [
             ("insumos", "insumos", self.config.DB_POLICY_UPSERT, ["codigo"]),
             ("composicoes", "composicoes", self.config.DB_POLICY_UPSERT, ["codigo"]),
-            (self.config.DB_TABLE_COMPOSICAO_INSUMOS, "composicao_insumos", self.config.DB_POLICY_APPEND, ["composicao_pai_codigo", "insumo_filho_codigo"]),
-            (self.config.DB_TABLE_COMPOSICAO_SUBCOMPOSICOES, "composicao_subcomposicoes", self.config.DB_POLICY_APPEND, ["composicao_pai_codigo", "composicao_filho_codigo"]),
-            ("precos_insumos_mensal", "precos_insumos_mensal", self.config.DB_POLICY_APPEND, ["insumo_codigo", "uf", "data_referencia", "regime"]),
-            ("custos_composicoes_mensal", "custos_composicoes_mensal", self.config.DB_POLICY_APPEND, ["composicao_codigo", "uf", "data_referencia", "regime"]),
+            (self.config.DB_TABLE_COMPOSICAO_INSUMOS, "composicao_insumos", self.config.DB_POLICY_UPSERT, ["composicao_pai_codigo", "insumo_filho_codigo"]),
+            (self.config.DB_TABLE_COMPOSICAO_SUBCOMPOSICOES, "composicao_subcomposicoes", self.config.DB_POLICY_UPSERT, ["composicao_pai_codigo", "composicao_filho_codigo"]),
+            ("precos_insumos_mensal", "precos_insumos_mensal", self.config.DB_POLICY_UPSERT, ["insumo_codigo", "uf", "data_referencia", "regime"]),
+            ("custos_composicoes_mensal", "custos_composicoes_mensal", self.config.DB_POLICY_UPSERT, ["composicao_codigo", "uf", "data_referencia", "regime"]),
             ("manutencoes_historico", "manutencoes_historico", self.config.DB_POLICY_UPSERT, ["item_codigo", "tipo_item", "data_referencia", "tipo_manutencao"]),
-            ("insumos_familias", "insumos_familias", self.config.DB_POLICY_UPSERT, ["insumo_codigo"]),
-            ("coeficientes_familia_mensal", "coeficientes_familia_mensal", self.config.DB_POLICY_APPEND, ["insumo_codigo", "uf"]),
-            ("composicoes_mix_mao_de_obra", "composicoes_mix_mao_de_obra", self.config.DB_POLICY_APPEND, ["composicao_codigo", "uf"])
+            ("insumos_familias", "insumos_familias", self.config.DB_POLICY_UPSERT, ["codigo_familia", "insumo_codigo"]),
+            ("coeficientes_familia_mensal", "coeficientes_familia_mensal", self.config.DB_POLICY_UPSERT, ["insumo_codigo", "uf", "data_referencia"]),
+            ("composicoes_mix_mao_de_obra", "composicoes_mix_mao_de_obra", self.config.DB_POLICY_UPSERT, ["composicao_codigo", "uf", "data_referencia"])
         ]
 
         for data_key, table_name, policy, pk in load_order:
